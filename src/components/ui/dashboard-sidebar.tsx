@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -192,16 +193,13 @@ export function DashboardSidebar({
     : (v: boolean) => setInternalMobileOpen(v);
 
   // Close mobile on viewport change
-  const [prevIsMobile, setPrevIsMobile] = useState(true);
+  const prevIsMobileRef = useRef(true);
   useEffect(() => {
-    if (prevIsMobile && !isMobile) {
+    if (prevIsMobileRef.current && !isMobile) {
       setMobileOpen(false);
-      setPrevIsMobile(false);
     }
-    if (!prevIsMobile && isMobile) {
-      setPrevIsMobile(true);
-    }
-  }, [isMobile, prevIsMobile, setMobileOpen]);
+    prevIsMobileRef.current = isMobile;
+  }, [isMobile, setMobileOpen]);
 
   const mobileVisible = isMobile && mobileOpen;
 

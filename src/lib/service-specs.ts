@@ -112,6 +112,41 @@ export const DOCUMENT_SPEC: ServiceSpec = {
       ],
     },
     {
+      id: "printMethod",
+      title: "طريقة الطباعة",
+      hint: "حسب الكمية المطلوبة",
+      optionKey: "printMethod",
+      options: [
+        { id: "digital", label: "رقمية عادية", emoji: "🖨️", description: "للطلبات القليلة (1-500 نسخة)", multiplier: 1, note: "الأكثر شيوعاً" },
+        { id: "offset", label: "أوفست", emoji: "🏭", description: "للكميات الكبيرة (500+ نسخة)", multiplier: 0.6, note: "أرخص للكميات الكبيرة" },
+        { id: "large-format", label: "طباعة كبيرة", emoji: "📐", description: "للمستندات الكبيرة جدًا", multiplier: 3, price: 200 },
+      ],
+    },
+    {
+      id: "colorProcessing",
+      title: "معالجة الألوان",
+      hint: "ضبط الألوان قبل الطباعة",
+      optionKey: "colorProcessing",
+      options: [
+        { id: "as-is", label: "كما هو", emoji: "✅", description: "بدون تعديل", price: 0 },
+        { id: "force-bw", label: "تحويل أبيض/أسود", emoji: "⬛", description: "يوفر ~50% من التكلفة", price: 0, note: "اقتصادي" },
+        { id: "enhance", label: "تعزيز الألوان", emoji: "🎨", description: "تشبع أعلى وجودة أفضل", price: 5, pricePerPage: 5 },
+        { id: "color-correct", label: "تصحيح ألوان احترافي", emoji: "🎯", description: "ضبط دقيق للألوان الفوتوغرافية", price: 15, pricePerPage: 15 },
+      ],
+    },
+    {
+      id: "bleedCut",
+      title: "خيارات القص والحواف",
+      hint: "كيفية قص الورق بعد الطباعة",
+      optionKey: "bleedCut",
+      options: [
+        { id: "auto-cut", label: "قص تلقائي", emoji: "✂️", description: "قص دقيق للحجم المطلوب", price: 10 },
+        { id: "margin-5", label: "مع هامش 5 مم", emoji: "📐", description: "مساحة بيضاء حول المحتوى", price: 0 },
+        { id: "bleed", label: "بدون حواف", emoji: "⬜", description: "الطباعة تمتد حتى حواف الورقة", price: 15, note: "للتصاميم" },
+        { id: "safe-margin", label: "حواف آمنة 10 مم", emoji: "🛡️", description: "للمستندات المهمة", price: 0 },
+      ],
+    },
+    {
       id: "binding",
       title: "التجليد",
       hint: "اختر طريقة تجليد الملف",
@@ -164,6 +199,29 @@ export const PHOTO_SPEC: ServiceSpec = {
         { id: "matte", label: "مطفي فوتوغرافي", emoji: "🔲", description: "غير عاكس — أناقة ورقيّة", pricePerPage: 5 },
         { id: "premium", label: "فاخر برو", emoji: "💎", description: "حريري عالي الجودة", pricePerPage: 15 },
         { id: "metallic", label: "معدني", emoji: "🥇", description: "لمعة معدنية خاصة", pricePerPage: 25 },
+      ],
+    },
+    {
+      id: "dpiBoost",
+      title: "ضبط الدقة",
+      hint: "جودة الدقة للطباعة",
+      optionKey: "dpiBoost",
+      options: [
+        { id: "auto", label: "تلقائي", emoji: "🔄", description: "حسب الصورة الأصلية", price: 0, note: "موصى به" },
+        { id: "dpi-150", label: "رفع إلى 150 DPI", emoji: "🖼️", description: "جودة متوسطة", price: 10 },
+        { id: "dpi-300", label: "رفع إلى 300 DPI", emoji: "💎", description: "جودة عالية احترافية", price: 30, note: "الأفضل للطباعة" },
+      ],
+    },
+    {
+      id: "imageFit",
+      title: "ملائمة الصورة",
+      hint: "كيفية ملاءمة الصورة على الورق",
+      optionKey: "imageFit",
+      options: [
+        { id: "keep-ratio", label: "حفظ النسبة", emoji: "📐", description: "بدون تشويه", price: 0, note: "موصى به" },
+        { id: "fill", label: "ملء الصفحة", emoji: "⬜", description: "الصورة تمتلئ الورقة كاملة", price: 0 },
+        { id: "white-bg", label: "مع خلفية بيضاء", emoji: "⬜", description: "حفظ النسبة مع خلفية", price: 0 },
+        { id: "crop-fill", label: "اقتصاص وملء", emoji: "✂️", description: "قص + ملء بدون تشويه", price: 5 },
       ],
     },
     {
@@ -244,6 +302,18 @@ export const BINDING_SPEC: ServiceSpec = {
         { id: "bw-title", label: "عنوان أبيض وأسود", emoji: "🏷️", description: "طباعة عنوان بسيط", price: 50 },
         { id: "color-title", label: "عنوان ملون", emoji: "🎨", description: "طباعة عنوان ملون", price: 100 },
         { id: "full-design", label: "تصميم كامل", emoji: "💎", description: "تصميم غلاف احترافي كامل", price: 250 },
+      ],
+    },
+    {
+      id: "pageNumbering",
+      title: "ترقيم الصفحات",
+      hint: "إضافة أرقام للصفحات",
+      optionKey: "pageNumbering",
+      options: [
+        { id: "none", label: "بدون ترقيم", emoji: "📄", description: "بدون أرقام", price: 0 },
+        { id: "simple", label: "ترقيم بسيط", emoji: "🔢", description: "أرقام في الأسفل", price: 20 },
+        { id: "with-header", label: "ترقيم مع عنوان", emoji: "📋", description: "رقم الصفحة + عنوان", price: 50 },
+        { id: "center", label: "ترقيم مركزي", emoji: "📊", description: "أرقام في المنتصف السفلي", price: 30 },
       ],
     },
     {
@@ -383,6 +453,16 @@ export const CARD_SPEC: ServiceSpec = {
       ],
     },
     {
+      id: "printMethod",
+      title: "طريقة الطباعة",
+      hint: "حسب الكمية المطلوبة",
+      optionKey: "printMethod",
+      options: [
+        { id: "digital", label: "رقمية", emoji: "🖨️", description: "للكميات القليلة السريعة", multiplier: 1, note: "الأسرع" },
+        { id: "offset", label: "أوفست", emoji: "🏭", description: "للكميات الكبيرة (100+)", multiplier: 0.5, note: "أرخص" },
+      ],
+    },
+    {
       id: "finish",
       title: "التشطيب",
       hint: "لمسات نهائية",
@@ -450,6 +530,17 @@ export const POSTER_SPEC: ServiceSpec = {
       ],
     },
     {
+      id: "colorProcessing",
+      title: "معالجة الألوان",
+      hint: "ضبط الألوان للملصق",
+      optionKey: "colorProcessing",
+      options: [
+        { id: "as-is", label: "كما هو", emoji: "✅", description: "بدون تعديل", price: 0 },
+        { id: "enhance", label: "تعزيز الألوان", emoji: "🎨", description: "تشبع عالي", pricePerPage: 30 },
+        { id: "color-correct", label: "تصحيح ألوان", emoji: "🎯", description: "ضبط دقيق", pricePerPage: 60 },
+      ],
+    },
+    {
       id: "lamination",
       title: "التغليف الواقي",
       hint: "حماية إضافية",
@@ -459,6 +550,17 @@ export const POSTER_SPEC: ServiceSpec = {
         { id: "glossy-lam", label: "تغليف لامع", emoji: "✨", description: "حماية ولمعان", price: 100 },
         { id: "matte-lam", label: "تغليف مطفي", emoji: "🔲", description: "حماية بدون لمعان", price: 100 },
         { id: "uv-resist", label: "مقاوم UV", emoji: "☀️", description: "ضد الشمس — للخارج", price: 200 },
+      ],
+    },
+    {
+      id: "printMethod",
+      title: "طريقة الطباعة",
+      hint: "حسب حجم الملصق والكمية",
+      optionKey: "printMethod",
+      options: [
+        { id: "digital", label: "رقمية", emoji: "🖨️", description: "سريع للكميات القليلة", multiplier: 1, note: "القياسي" },
+        { id: "offset", label: "أوفست", emoji: "🏭", description: "للكميات الكبيرة", multiplier: 0.7 },
+        { id: "large-format", label: "طباعة كبيرة", emoji: "📐", description: "مباشر للملصقات الكبيرة", multiplier: 1.2, note: "موصى به" },
       ],
     },
     {
@@ -508,15 +610,16 @@ export interface PricingResult {
   discount: number;
   total: number;
   breakdown: { label: string; amount: number }[];
-  appliedOfferNote?: string;
 }
 
 export interface PricingRequest {
-  serviceType: ServiceType;
+  serviceType: string;
   pages: number;
   copies: number;
   delivery: string;
   selectedOptions: Record<string, string>; // optionKey -> optionId
+  /** مواصفات الخدمة — إذا لم تُمرَّر، يُستخدم SERVICE_SPECS[serviceType] */
+  spec?: ServiceSpec;
 }
 
 const DELIVERY_SURCHARGE: Record<string, number> = {
@@ -526,9 +629,23 @@ const DELIVERY_SURCHARGE: Record<string, number> = {
   scheduled: 0,
 };
 
-export function calculatePricingCustom(req: PricingRequest, specs?: Record<string, ServiceSpec>): PricingResult {
-  const SPECS = specs || SERVICE_SPECS;
-  const spec = SPECS[req.serviceType];
+export function calculatePricingCustom(req: PricingRequest): PricingResult {
+  const spec = req.spec || (SERVICE_SPECS as Record<string, ServiceSpec>)[req.serviceType];
+  if (!spec) {
+    // خدمة غير موجودة — نُرجع سعر صفري مع تفاصيل
+    return {
+      perPage: 0,
+      pagesCost: 0,
+      copiesCost: 0,
+      sidesSaving: 0,
+      extrasCost: 0,
+      finishingCost: 0,
+      deliveryCost: 0,
+      discount: 0,
+      total: 0,
+      breakdown: [{ label: "خدمة غير معروفة", amount: 0 }],
+    };
+  }
   const basePerPage = spec.basePricePerPage;
   const breakdown: { label: string; amount: number }[] = [];
 
@@ -544,11 +661,22 @@ export function calculatePricingCustom(req: PricingRequest, specs?: Record<strin
     if (!opt) return;
 
     if (opt.multiplier) perPageMultiplier *= opt.multiplier;
-    if (opt.pricePerPage) perPageAddition += opt.pricePerPage;
-    if (opt.price) flatExtras += opt.price;
-
-    if (opt.price && opt.price > 0) {
-      breakdown.push({ label: `${section.title}: ${opt.label}`, amount: opt.price * req.copies });
+    if (opt.pricePerPage) {
+      perPageAddition += opt.pricePerPage;
+      // إضافة تفصيل التكلفة لكل صفحة في البحث
+      const pageCost = (opt.pricePerPage > 0 ? opt.pricePerPage : opt.pricePerPage) * req.pages * req.copies;
+      if (pageCost !== 0) {
+        breakdown.push({
+          label: `${section.title}: ${opt.label}`,
+          amount: Math.round(pageCost),
+        });
+      }
+    }
+    if (opt.price) {
+      flatExtras += opt.price;
+      if (opt.price > 0) {
+        breakdown.push({ label: `${section.title}: ${opt.label}`, amount: opt.price * req.copies });
+      }
     }
   });
 

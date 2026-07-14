@@ -45,13 +45,18 @@ export interface PrintOrderPricing {
   pagesCost: number;
   copiesCost: number;
   sidesSaving: number;
-  paperTypeSurcharge: number;
-  bindingCost: number;
+  // حقول نظام التسعير القديم
+  paperTypeSurcharge?: number;
+  bindingCost?: number;
+  // حقول نظام التسعير الجديد
+  extrasCost?: number;
+  finishingCost?: number;
+  breakdown?: { label: string; amount: number }[];
+  appliedOfferNote?: string;
+  // حقول مشتركة
   deliveryCost: number;
   discount: number;
   total: number;
-  finishingCost?: number;
-  appliedOfferNote?: string;
 }
 
 export interface PrintOrderLite {
@@ -62,6 +67,8 @@ export interface PrintOrderLite {
   fileName: string | null;
   fileType: string | null;
   fileSize: number | null;
+  fileData: string | null;
+  filePreview: string | null;
   smartAnalysis: SmartAnalysis | null;
   options: PrintOrderOptions;
   customer: PrintOrderCustomer;
@@ -72,8 +79,13 @@ export interface PrintOrderLite {
   pages: number;
   copies: number;
   total: number;
+  cost: number;
+  tags: string[];
+  adminNotes: string | null;
   createdAt: string;
   updatedAt: string;
   readyAt: string | null;
   deliveredAt: string | null;
+  startedPrintingAt: string | null;
+  completedPrintingAt: string | null;
 }

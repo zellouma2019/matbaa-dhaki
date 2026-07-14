@@ -18,12 +18,11 @@ import {
   RefreshCw,
   Search,
   Plus,
-  MessageCircle,
-  Link2,
+  Loader2,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { toast } from "sonner";
-import { useShop } from "@/lib/shop-context";
+import { downloadInvoicePDF } from "@/lib/pdf-invoice";
 import type { CreatedOrder } from "@/components/app/app-shell";
 import {
   STATUS_FLOW,
@@ -31,20 +30,17 @@ import {
   formatDA,
 } from "@/lib/print-config";
 
-
 interface OrderSuccessProps {
   order: CreatedOrder | null;
   open: boolean;
   onClose: () => void;
   onNavigate: (view: "new" | "track" | "repeat") => void;
-  shopName?: string;
-  shopId?: string | null;
 }
 
-export function OrderSuccess({ order, open, onClose, onNavigate, shopName, shopId }: OrderSuccessProps) {
-  const { hasFeature, shop } = useShop();
+export function OrderSuccess({ order, open, onClose, onNavigate }: OrderSuccessProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [showQR, setShowQR] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     if (order && open) {
@@ -86,13 +82,11 @@ export function OrderSuccess({ order, open, onClose, onNavigate, shopName, shopI
     toast.success("تم نسخ رقم الطلب");
   }
 
-  function downloadInvoice() {
+  async function downloadInvoice() {
     if (!order) return;
-    // فتح رابط تنزيل الفاتورة في تبويب جديد
-    window.open(`/api/orders/${order.id}/invoice${shopId ? `?shopId=${shopId}` : ""}`, "_blank");
-    toast.success("جارٍ تنزيل الفاتورة...", {
-      description: "PDF · تفاصيل الطلب الكاملة",
-    });
+    setPdfLoading(true);
+    await downloadInvoicePDF(order.id, order.reference);
+    setPdfLoading(false);
   }
 
   return (
@@ -114,10 +108,10 @@ export function OrderSuccess({ order, open, onClose, onNavigate, shopName, shopI
           <div className="p-6 space-y-5">
             {/* ===== رقم المعاملة + السعر ===== */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+              <div className="rounded-xl border bg-card p-4">
                 <div className="text-xs text-muted-foreground mb-1">رقم المعاملة</div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-2xl font-black text-neutral-900 font-mono tracking-wider">
+                  <span className="text-xl font-bold text-neutral-900 font-mono tracking-wider">
                     {order.reference}
                   </span>
                   <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={copyRef}>
@@ -149,14 +143,19 @@ export function OrderSuccess({ order, open, onClose, onNavigate, shopName, shopI
               </button>
               <button
                 onClick={downloadInvoice}
-                className="group flex items-center gap-3 p-4 rounded-xl border-2 border-neutral-200 bg-card hover:bg-neutral-50 hover:border-neutral-300 transition-colors text-right"
+                disabled={pdfLoading}
+                className="group flex items-center gap-3 p-4 rounded-xl border-2 border-neutral-200 bg-card hover:bg-neutral-50 hover:border-neutral-300 transition-colors text-right disabled:opacity-60"
               >
                 <div className="w-10 h-10 rounded-lg bg-amber-400 flex items-center justify-center shrink-0">
-                  <Download className="h-5 w-5 text-neutral-900" />
+                  {pdfLoading ? (
+                    <Loader2 className="h-5 w-5 text-neutral-900 animate-spin" />
+                  ) : (
+                    <Download className="h-5 w-5 text-neutral-900" />
+                  )}
                 </div>
                 <div className="min-w-0">
-                  <div className="font-bold text-sm">تنزيل الفاتورة</div>
-                  <div className="text-xs text-muted-foreground">تفاصيل الطلب PDF</div>
+                  <div className="font-bold text-sm">{pdfLoading ? "جارٍ الإنشاء..." : "تنزيل الفاتورة PDF"}</div>
+                  <div className="text-xs text-muted-foreground">ملف PDF جاهز للطباعة</div>
                 </div>
               </button>
             </div>
@@ -183,7 +182,7 @@ export function OrderSuccess({ order, open, onClose, onNavigate, shopName, shopI
               <div className="flex-1">
                 <div className="text-xs text-muted-foreground">الوقت المتوقع للتسليم</div>
                 <div className="font-bold text-blue-700">
-                  {order.estimatedHours} {order.estimatedHours === 1 ? "ساعة" : "ساعات"}
+                  {order.estimatedHours} {order.estimatedHours === 1 ? "ساعة" : "ساعة"}
                 </div>
               </div>
               <div className="text-xs text-blue-600 text-left">
@@ -287,43 +286,6 @@ export function OrderSuccess({ order, open, onClose, onNavigate, shopName, shopI
                 طلب جديد
               </Button>
             </div>
-
-            {/* ===== أزرار الميزات المدفوعة ===== */}
-            {(hasFeature("whatsappLink") || hasFeature("directTrackingLink")) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {hasFeature("whatsappLink") && shop?.whatsapp && (
-                  <a
-                    href={(() => {
-                      const digits = shop.whatsapp.replace(/[^0-9]/g, "");
-                      const raw = digits.startsWith("0") ? digits.substring(1) : digits;
-                      const phone = raw.startsWith("213") ? raw : `213${raw}`;
-                      return `https://wa.me/${phone}?text=${encodeURIComponent("مرحباً، أريد الاستفسار عن طلبي " + order.reference)}`;
-                    })()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 h-11 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-medium text-sm transition-colors"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    تواصل واتساب
-                  </a>
-                )}
-                {hasFeature("directTrackingLink") && (
-                  <button
-                    onClick={() => {
-                      const trackUrl = `${window.location.origin}${window.location.pathname}?track=${order.reference}`;
-                      navigator.clipboard.writeText(trackUrl);
-                      toast.success("تم نسخ رابط التتبع", {
-                        description: trackUrl,
-                      });
-                    }}
-                    className="flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-neutral-200 bg-card hover:bg-neutral-50 hover:border-neutral-300 font-medium text-sm transition-colors"
-                  >
-                    <Link2 className="h-4 w-4" />
-                    نسخ رابط التتبع
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </DialogContent>

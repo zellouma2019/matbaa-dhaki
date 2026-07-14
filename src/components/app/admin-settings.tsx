@@ -68,6 +68,7 @@ import {
   ChevronLeft,
   Sparkles,
   AlertTriangle,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -80,6 +81,7 @@ import type {
   SpecOption,
   ServiceType,
 } from "@/lib/service-specs";
+import { useAppStore } from "@/lib/store";
 
 // إعادة تصدير النوع المركزي للإعدادات
 export type { AppSettings } from "@/lib/default-settings";
@@ -156,7 +158,7 @@ function Field({
 // أيقونة الخدمة حسب النوع
 // ============================================================
 
-const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
+const SERVICE_TYPE_LABELS: Record<string, string> = {
   document: "مستند",
   photo: "صور",
   binding: "تجليد",
@@ -169,7 +171,9 @@ const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
 // المكوّن الرئيسي
 // ============================================================
 
-export function AdminSettings({ shopId }: { shopId?: string | null }) {
+export function AdminSettings() {
+  const adminCode = useAppStore((s) => s.adminCode);
+  const adminHeaders: Record<string, string> = { "x-admin-code": adminCode };
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [original, setOriginal] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -181,7 +185,7 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/settings${shopId ? `?shopId=${shopId}` : ""}`);
+      const res = await fetch("/api/settings");
       if (!res.ok) throw new Error("فشل تحميل الإعدادات");
       const data = (await res.json()) as AppSettings;
       const safe: AppSettings = {
@@ -350,6 +354,42 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
     toast.success("تمت إضافة قسم جديد");
   }
 
+  /** إضافة خدمة جديدة */
+  function addService() {
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const newType = `custom_${uid("")}`;
+      const newService: ServiceSpec = {
+        type: newType as ServiceType,
+        name: "خدمة جديدة",
+        emoji: "✨",
+        description: "خدمة مخصصة",
+        popularity: 50,
+        basePricePerPage: 10,
+        accepts: ["pdf", "docx", "jpg", "jpeg", "png", "webp"],
+        isPopular: false,
+        sections: [],
+        hasPageCount: true,
+        hasPrintRange: true,
+        unit: "صفحة",
+      };
+      return { ...prev, services: [...prev.services, newService] };
+    });
+    toast.success("تمت إضافة خدمة جديدة");
+  }
+
+  /** حذف خدمة */
+  function deleteService(serviceIdx: number) {
+    setSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        services: prev.services.filter((_, i) => i !== serviceIdx),
+      };
+    });
+    toast.success("تم حذف الخدمة");
+  }
+
   /** حذف قسم */
   function deleteSection(serviceIdx: number, sectionIdx: number) {
     setSettings((prev) => {
@@ -419,10 +459,10 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
     if (!settings) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/settings${shopId ? `?shopId=${shopId}` : ""}`, {
+      const res = await fetch("/api/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...settings, shopId: shopId || undefined }),
+        headers: { "Content-Type": "application/json", ...adminHeaders },
+        body: JSON.stringify(settings),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -445,7 +485,7 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
   async function handleReset() {
     setResetting(true);
     try {
-      const res = await fetch(`/api/settings${shopId ? `?shopId=${shopId}` : ""}`, { method: "DELETE" });
+      const res = await fetch("/api/settings", { method: "DELETE", headers: adminHeaders });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "فشل إعادة التعيين");
@@ -549,7 +589,7 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
         onValueChange={setActiveTab}
         className="space-y-5"
       >
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1 bg-muted/60">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto p-1 bg-muted/60">
           <TabsTrigger
             value="services"
             className="flex items-center gap-1.5 py-2 text-xs sm:text-sm data-[state=active]:bg-neutral-900 data-[state=active]:text-white"
@@ -570,6 +610,13 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
           >
             <SlidersHorizontal className="h-4 w-4" />
             الإعدادات العامة
+          </TabsTrigger>
+          <TabsTrigger
+            value="intro"
+            className="flex items-center gap-1.5 py-2 text-xs sm:text-sm data-[state=active]:bg-neutral-900 data-[state=active]:text-white"
+          >
+            <Sparkles className="h-4 w-4" />
+            شاشة الإنترو
           </TabsTrigger>
           <TabsTrigger
             value="reset"
@@ -615,7 +662,7 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
                           variant="outline"
                           className="text-xs bg-muted/50"
                         >
-                          {SERVICE_TYPE_LABELS[service.type]}
+                          {SERVICE_TYPE_LABELS[service.type] || service.type}
                         </Badge>
                         {service.isPopular && (
                           <Badge className="text-xs gold-gradient text-neutral-900 gap-0.5">
@@ -628,12 +675,44 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
                         {service.description} · {service.sections.length} قسم
                       </div>
                     </div>
-                    <div className="text-left shrink-0">
-                      <div className="text-sm font-bold text-amber-700">
-                        {service.basePricePerPage} دج
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        لكل صفحة
+                    <div className="flex items-center gap-2 text-left shrink-0">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            title="حذف الخدمة"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent dir="rtl">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>حذف خدمة "{service.name}"؟</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              سيتم حذف الخدمة نهائياً من القائمة. الطلبات الحالية لن تتأثر.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteService(sIdx)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              حذف الخدمة
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                      <div>
+                        <div className="text-sm font-bold text-amber-700">
+                          {service.basePricePerPage} دج
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          لكل صفحة
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -938,6 +1017,16 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
               </AccordionItem>
             ))}
           </Accordion>
+
+          {/* زر إضافة خدمة جديدة */}
+          <Button
+            variant="outline"
+            className="w-full border-dashed border-2 border-amber-300 text-amber-700 hover:bg-amber-50 hover:border-amber-400 gap-2 h-12"
+            onClick={addService}
+          >
+            <Plus className="h-5 w-5" />
+            إضافة خدمة جديدة
+          </Button>
         </TabsContent>
 
         {/* ===== التبويب 2: التسليم ===== */}
@@ -1220,6 +1309,201 @@ export function AdminSettings({ shopId }: { shopId?: string | null }) {
                 <p className="text-xs text-muted-foreground/80">
                   بالدينار الجزائري
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== التبويب: شاشة الإنترو ===== */}
+        <TabsContent value="intro" className="space-y-4 outline-none">
+          <Card className="border-amber-200/60 bg-gradient-to-l from-amber-50/50 to-transparent">
+            <CardContent className="p-4 flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="text-xs text-muted-foreground leading-relaxed">
+                خصّص شاشة الإنترو التي تظهر عند دخول الموقع. يمكنك تغيير العنوان،
+                الشعار، الأيقونة، الألوان، والمدة. اضغط &quot;حفظ التغييرات&quot; في الأعلى لتثبيت التعديلات.
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">إعدادات شاشة الإنترو</CardTitle>
+              <CardDescription className="text-xs">
+                عدّل محتوى ومظهر شاشة الترحيب
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* تفعيل/تعطيل */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                <div>
+                  <div className="text-sm font-medium">تفعيل شاشة الإنترو</div>
+                  <div className="text-xs text-muted-foreground">إذا تم التعطيل، سيُفتح الموقع مباشرة بدون إنترو</div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.intro?.enabled ?? true}
+                    onChange={(e) =>
+                      setSettings({ ...local, intro: { ...settings.intro!, enabled: e.target.checked } })
+                    }
+                    className="w-5 h-5 rounded accent-amber-500"
+                  />
+                  <span className="text-xs">{settings.intro?.enabled ? "مفعّل" : "معطّل"}</span>
+                </label>
+              </div>
+
+              {/* العنوان والشعار */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Field
+                  label="العنوان الرئيسي"
+                  value={settings.intro?.title ?? ""}
+                  onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, title: v } })}
+                  placeholder="مطبعة الذكي"
+                />
+                <Field
+                  label="الشعار السفلي"
+                  value={settings.intro?.subtitle ?? ""}
+                  onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, subtitle: v } })}
+                  placeholder="اطبع بسهولة — أسرع من واتساب"
+                />
+              </div>
+
+              {/* الأيقونة والإيموجي */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Field
+                  label="الإيموجي / الأيقونة"
+                  value={settings.intro?.emoji ?? ""}
+                  onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, emoji: v } })}
+                  placeholder="🖨️"
+                  hint="ضع إيموجي (مثل 🖨️) أو اتركه فارغاً لأيقونة الطابعة الافتراضية"
+                />
+                <Field
+                  label="نص التذييل"
+                  value={settings.intro?.footerText ?? ""}
+                  onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, footerText: v } })}
+                  placeholder="🇩🇿 صُمّم بحب في الجزائر"
+                />
+              </div>
+
+              {/* الألوان */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">لون الخلفية</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settings.intro?.bgColor ?? "#1a1a1a"}
+                      onChange={(e) =>
+                        setSettings({ ...local, intro: { ...settings.intro!, bgColor: e.target.value } })
+                      }
+                      className="w-10 h-10 rounded-lg border cursor-pointer"
+                    />
+                    <Field
+                      value={settings.intro?.bgColor ?? "#1a1a1a"}
+                      onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, bgColor: v } })}
+                      placeholder="#1a1a1a"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">اللون المميز (الذهبي)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settings.intro?.accentColor ?? "#D4AF37"}
+                      onChange={(e) =>
+                        setSettings({ ...local, intro: { ...settings.intro!, accentColor: e.target.value } })
+                      }
+                      className="w-10 h-10 rounded-lg border cursor-pointer"
+                    />
+                    <Field
+                      value={settings.intro?.accentColor ?? "#D4AF37"}
+                      onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, accentColor: v } })}
+                      placeholder="#D4AF37"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* المدة */}
+              <Field
+                label="مدة العرض (بالملي ثانية - 3000 = 3 ثوانٍ)"
+                value={String(settings.intro?.duration ?? 4200)}
+                onChange={(v) => setSettings({ ...local, intro: { ...settings.intro!, duration: toNumber(v) } })}
+                placeholder="4200"
+                hint="الحد الأدنى 2000 (ثانيتان)، الحد الأقصى 10000 (10 ثوانٍ)"
+              />
+
+              {/* خيارات إضافية */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                  <span className="text-sm">شريط التحميل</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.intro?.showProgress ?? true}
+                      onChange={(e) =>
+                        setSettings({ ...local, intro: { ...settings.intro!, showProgress: e.target.checked } })
+                      }
+                      className="w-4 h-4 rounded accent-amber-500"
+                    />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                  <span className="text-sm">الحلقة الدوارة</span>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.intro?.showSpinningRing ?? true}
+                      onChange={(e) =>
+                        setSettings({ ...local, intro: { ...settings.intro!, showSpinningRing: e.target.checked } })
+                      }
+                      className="w-4 h-4 rounded accent-amber-500"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* معاينة مباشرة */}
+              <div className="rounded-xl border border-amber-200 overflow-hidden">
+                <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs font-bold text-amber-800">
+                  معاينة مباشرة
+                </div>
+                <div
+                  className="flex flex-col items-center justify-center gap-3 py-8"
+                  style={{ backgroundColor: settings.intro?.bgColor ?? "#1a1a1a" }}
+                >
+                  <div
+                    className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg text-3xl"
+                    style={{
+                      background: `linear-gradient(135deg, ${settings.intro?.accentColor ?? "#D4AF37"}, ${settings.intro?.accentColor ?? "#D4AF37"}CC)`,
+                    }}
+                  >
+                    {settings.intro?.emoji && settings.intro.emoji.length <= 4 ? (
+                      settings.intro.emoji
+                    ) : (
+                      <Printer className="h-8 w-8" style={{ color: settings.intro?.bgColor ?? "#1a1a1a" }} />
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold text-white">{settings.intro?.title}</h3>
+                  {settings.intro?.subtitle && (
+                    <p className="text-sm font-medium" style={{ color: settings.intro?.accentColor ?? "#D4AF37" }}>
+                      {settings.intro.subtitle}
+                    </p>
+                  )}
+                  {settings.intro?.showProgress && (
+                    <div className="w-24 h-1 rounded-full bg-neutral-700 overflow-hidden mt-1">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ backgroundColor: settings.intro?.accentColor ?? "#D4AF37", width: "60%" }}
+                      />
+                    </div>
+                  )}
+                  {settings.intro?.footerText && (
+                    <p className="text-xs text-neutral-500 mt-2">{settings.intro.footerText}</p>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

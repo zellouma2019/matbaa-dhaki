@@ -4,14 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  Upload,
   FileText,
   Check,
   Clock,
   Sparkles,
-  Brain,
   Zap,
   Phone as PhoneIcon,
+  CheckCircle2,
+  Sun,
+  Moon,
+  CalendarDays,
+  Timer,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,26 +23,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
+  SERVICES as STATIC_SERVICES,
   COLORS,
+  PAPER_SIZES,
+  SIDES,
+  BINDINGS,
   PAPER_TYPES,
   DELIVERY_OPTIONS,
   PRINT_RANGES,
+  calculatePricing,
   estimateDeliveryHours,
   formatDA,
+  type ServiceType,
+  type PricingInput,
 } from "@/lib/print-config";
-
 import {
-  SERVICE_SPECS as DEFAULT_SERVICE_SPECS,
+  SERVICE_SPECS as STATIC_SERVICE_SPECS,
+  SPEC_LIST,
   calculatePricingCustom,
   type ServiceSpec,
-  type ServiceType,
+  type SpecOption,
 } from "@/lib/service-specs";
-import { analyzeFileReal, parsePageRange, type RealFileAnalysis } from "@/lib/file-analyzer";
+import type { AppSettings } from "@/lib/default-settings";
+import { analyzeFileReal, analyzeFileWithAI, parsePageRange, type RealFileAnalysis } from "@/lib/file-analyzer";
+import UploadStep, { type AnalysisPhase } from "@/components/app/upload-step";
 import { isValidAlgerianPhone, getPhoneErrorMessage } from "@/lib/phone-validation";
 import { selectOffer, type Offer } from "@/lib/offers";
 import { OfferPopup } from "@/components/app/offer-popup";
 import type { CreatedOrder } from "@/components/app/app-shell";
 import type { PrintOrderLite } from "@/lib/order-types";
+// FileAnalysisPanel replaced by UploadStep
 
 interface NewOrderWizardProps {
   onCreated: (order: CreatedOrder) => void;
@@ -46,19 +60,23 @@ interface NewOrderWizardProps {
   prefillOrder?: PrintOrderLite | null;
   /** عند انتهاء التعديل من تكرار الطلب */
   onPrefillConsumed?: () => void;
-  shopId?: string | null;
 }
 
-const STEP_LABELS = ["اختيار الخدمة", "إعدادات الطباعة", "وقت التسليم", "معلومات التواصل", "مراجعة الطلب"];
+const STEP_LABELS = ["رفع الملف والتحليل", "إعدادات الطباعة", "وقت التسليم", "معلومات التواصل", "مراجعة الطلب"];
 const STEP_DURATIONS = ["أقل من 15 ثانية", "حوالي 30 ثانية", "5 ثوانٍ", "15 ثانية", "10 ثوانٍ"];
 
-export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, shopId }: NewOrderWizardProps) {
+export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed }: NewOrderWizardProps) {
   const [step, setStep] = useState(0);
   const [serviceType, setServiceType] = useState<ServiceType | null>(null);
   const [showAllServices, setShowAllServices] = useState(false);
   const [fileName, setFileName] = useState("");
   const [fileType, setFileType] = useState("");
   const [fileSize, setFileSize] = useState(0);
+  const [fileDataUrl, setFileDataUrl] = useState<string>(""); // اسم الملف المخزَّن على الخادم
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [analysisPhase, setAnalysisPhase] = useState<AnalysisPhase>("idle");
+  const [uploadError, setUploadError] = useState<string>("");
   const [analysis, setAnalysis] = useState<RealFileAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [totalPages, setTotalPages] = useState(10); // إجمالي صفحات الملف
@@ -69,6 +87,7 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
   const [notes, setNotes] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("today");
   const [deliveryDate, setDeliveryDate] = useState("");
+  const [deliveryTimeSlot, setDeliveryTimeSlot] = useState<string>(""); // فترة زمنية: morning/noon/evening
   const [custName, setCustName] = useState("");
   const [custPhone, setCustPhone] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
@@ -78,51 +97,10 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
   const [custDelivery, setCustDelivery] = useState("pickup");
   const [custAddress, setCustAddress] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
   const [offer, setOffer] = useState<Offer | null>(null);
   const [offerShown, setOfferShown] = useState(false);
   const [offerPopupOpen, setOfferPopupOpen] = useState(false);
   const [appliedOffer, setAppliedOffer] = useState<Offer | null>(null);
-
-  // ===== جلب إعدادات المتجر (خدمات وأسعار مخصصة) =====
-  const [shopServices, setShopServices] = useState<ServiceSpec[] | null>(null);
-
-  useEffect(() => {
-    if (!shopId) return;
-    let active = true;
-    fetch(`/api/settings?shopId=${shopId}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (active && d.services && Array.isArray(d.services) && d.services.length > 0) {
-          setShopServices(d.services);
-        }
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [shopId]);
-
-  // المواصفات الفعالة: من إعدادات المتجر أو الافتراضية
-  const activeSpecs = useMemo<Record<string, ServiceSpec>>(() => {
-    if (shopServices && shopServices.length > 0) {
-      const map: Record<string, ServiceSpec> = {};
-      shopServices.forEach((s) => { map[s.type] = s; });
-      return map;
-    }
-    return DEFAULT_SERVICE_SPECS;
-  }, [shopServices]);
-
-  // قائمة الخدمات الفعالة (مرتّبة بالشعبية)
-  const activeServices = useMemo(() => {
-    const list = Object.values(activeSpecs).sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    return list.map((s) => ({
-      type: s.type as ServiceType,
-      name: s.name,
-      emoji: s.emoji,
-      description: s.description,
-      popularity: s.popularity,
-      isPopular: s.isPopular,
-    }));
-  }, [activeSpecs]);
 
   // الخيارات المخصصة لكل خدمة (موحّدة في كائن واحد)
   const [specOptions, setSpecOptions] = useState<Record<string, string>>({});
@@ -144,7 +122,7 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
       setPageRange(prefillOrder.options.pageRange || "");
       setCopies(prefillOrder.options.copies);
       // تحميل الخيارات في specOptions (متوافق مع المخطط القديم والجديد)
-      const opts = prefillOrder.options as unknown as Record<string, unknown>;
+      const opts = prefillOrder.options as Record<string, unknown>;
       const loaded: Record<string, string> = {};
       if (opts.color) loaded.color = opts.color as string;
       if (opts.paperSize) loaded.paperSize = opts.paperSize as string;
@@ -168,6 +146,7 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
       setNotes(prefillOrder.options.notes || "");
       setDeliveryMode(prefillOrder.delivery.mode);
       setDeliveryDate(prefillOrder.delivery.date);
+      setDeliveryTimeSlot(prefillOrder.delivery.timeSlot || "");
       setCustName(prefillOrder.customer.name);
       setCustPhone(prefillOrder.customer.phone);
       setCustWhatsapp(prefillOrder.customer.whatsapp || "");
@@ -182,14 +161,36 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
     }
   }, [prefillOrder]);
 
+  // ═══ تحميل المواصفات ديناميكياً من الإعدادات ═══
+  const [dynamicSpecs, setDynamicSpecs] = useState<Record<string, ServiceSpec>>(
+    () => Object.fromEntries(Object.entries(STATIC_SERVICE_SPECS).map(([k, v]) => [k, v]))
+  );
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data: AppSettings) => {
+        if (data.services?.length) {
+          const map: Record<string, ServiceSpec> = {};
+          for (const s of data.services) {
+            map[s.type] = s;
+          }
+          setDynamicSpecs(map);
+        }
+      })
+      .catch(() => {
+        // فشل التحميل — نستخدم الافتراضي
+      });
+  }, []);
+
   const selectedService = useMemo(
-    () => activeServices.find((s) => s.type === serviceType),
-    [serviceType, activeServices],
+    () => dynamicSpecs[serviceType || ""] || STATIC_SERVICES.find((s) => s.type === serviceType) || null,
+    [serviceType, dynamicSpecs],
   );
 
   const currentSpec = useMemo<ServiceSpec | null>(
-    () => (serviceType ? activeSpecs[serviceType] : null),
-    [serviceType, activeSpecs],
+    () => (serviceType ? (dynamicSpecs[serviceType] || null) : null),
+    [serviceType, dynamicSpecs],
   );
 
   // تحديث عدد الصفحات الفعلي عند تغيير النطاق
@@ -214,7 +215,8 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
         const t = setTimeout(() => {
           setOfferPopupOpen(true);
         }, 4000);
-        return () => { clearTimeout(t); };
+        // لا تُرجع cleanup function لتجنب إلغاء الـ timeout
+        return () => {};
       }
     }
   }, [step, offerShown, serviceType, pages, copies]);
@@ -227,8 +229,9 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
       copies,
       delivery: deliveryMode,
       selectedOptions: specOptions,
-    }, activeSpecs);
-  }, [serviceType, pages, copies, deliveryMode, specOptions, activeSpecs]);
+      spec: dynamicSpecs[serviceType],
+    });
+  }, [serviceType, pages, copies, deliveryMode, specOptions, dynamicSpecs]);
 
   // السعر النهائي بعد تطبيق العرض المختار
   const finalPricing = useMemo(() => {
@@ -254,19 +257,179 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
       total: Math.max(0, pricing.total - discountAmount),
       discount: pricing.discount + discountAmount,
       appliedOfferNote: freeServiceNote || `${appliedOffer.discountPercent}% خصم`,
-    } as typeof pricing & { appliedOfferNote: string };
+    };
   }, [pricing, appliedOffer]);
 
   const estimatedHours = useMemo(() => {
     return estimateDeliveryHours(deliveryMode, pages, copies);
   }, [deliveryMode, pages, copies]);
 
-  const visibleServices = showAllServices ? activeServices : activeServices.slice(0, 3);
+  // ===== حساب الوقت المقدّر للتسليم (ساعة محددة) =====
+  const deliveryEstimate = useMemo(() => {
+    const now = new Date();
+    const hours = estimatedHours;
+    const readyTime = new Date(now.getTime() + hours * 60 * 60 * 1000);
+
+    // ساعات العمل: 8 صباحاً - 8 مساءً
+    const WORK_START = 8;
+    const WORK_END = 20;
+    const currentHour = now.getHours();
+    const currentMin = now.getMinutes();
+
+    // إذا كان الوقت الحالي خارج ساعات العمل، نبدأ الحساب من بداية العمل القادمة
+    let effectiveStart = new Date(now);
+    if (currentHour >= WORK_END || currentHour < WORK_START) {
+      // قبل 8 صباحاً أو بعد 8 مساءً: يبدأ من 8 صباحاً
+      effectiveStart.setHours(WORK_START, 0, 0, 0);
+      if (currentHour >= WORK_END) {
+        effectiveStart.setDate(effectiveStart.getDate() + 1); // اليوم التالي
+      }
+    }
+
+    // حساب الوقت الجاهز مع تجاهل ساعات الليل
+    let tempEnd = new Date(effectiveStart);
+    let remainingMinutes = hours * 60;
+    while (remainingMinutes > 0) {
+      const endOfDay = new Date(tempEnd);
+      endOfDay.setHours(WORK_END, 0, 0, 0);
+      const minutesToEndOfDay = Math.max(0, (endOfDay.getTime() - tempEnd.getTime()) / 60000);
+
+      if (remainingMinutes <= minutesToEndOfDay) {
+        tempEnd = new Date(tempEnd.getTime() + remainingMinutes * 60000);
+        remainingMinutes = 0;
+      } else {
+        remainingMinutes -= minutesToEndOfDay;
+        tempEnd.setDate(tempEnd.getDate() + 1);
+        tempEnd.setHours(WORK_START, 0, 0, 0);
+      }
+    }
+
+    // تنسيق الوقت بالعربية
+    const formatTime = (d: Date) => {
+      const h = d.getHours();
+      const m = d.getMinutes().toString().padStart(2, "0");
+      if (h === 0) return `12:${m} صباحاً`;
+      if (h < 12) return `${h}:${m} صباحاً`;
+      if (h === 12) return `12:${m} مساءً`;
+      return `${h - 12}:${m} مساءً`;
+    };
+
+    const formatDate = (d: Date) => {
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const dStr = d.toDateString();
+      if (dStr === today.toDateString()) return "اليوم";
+      if (dStr === tomorrow.toDateString()) return "غداً";
+      return d.toLocaleDateString("ar-DZ", { weekday: "long", day: "numeric", month: "short" });
+    };
+
+    // نسبة التقدم البصري (0-100)
+    const totalWorkMinutes = (WORK_END - WORK_START) * 60;
+    const elapsed = (Math.min(currentHour, WORK_END) - WORK_START) * 60 + (currentHour < WORK_END ? currentMin : 0);
+    const dayProgress = currentHour >= WORK_END ? 100 : Math.max(0, Math.min(100, (elapsed / totalWorkMinutes) * 100));
+
+    // الفترات الزمنية المتاحة
+    const getAvailableSlots = (): { id: string; label: string; time: string; icon: typeof Sun; available: boolean; earliest?: string }[] => {
+      const slots = [
+        { id: "morning", label: "الصباح", time: "8:00 - 12:00", icon: Sun },
+        { id: "noon", label: "الظهيرة", time: "12:00 - 16:00", icon: Clock },
+        { id: "evening", label: "المساء", time: "16:00 - 20:00", icon: Moon },
+      ];
+
+      // عند اختيار "غداً" كل الفترات متاحة لأن الزبون يحدد يوم كامل
+      if (deliveryMode === "tomorrow") {
+        return slots.map((s) => ({ ...s, available: true, earliest: "" }));
+      }
+
+      // نهايات الفترات بالساعة (بالتوقيت 24 ساعة)
+      const slotEndHours: Record<string, number> = { morning: 12, noon: 16, evening: 20 };
+      const readyHour = tempEnd.getHours();
+
+      // هل الطلب سيُنجز اليوم أم غداً؟
+      const todayStr = now.toDateString();
+      const readyDateStr2 = tempEnd.toDateString();
+      const isReadyToday = readyDateStr2 === todayStr;
+
+      return slots.map((s) => {
+        let available = false;
+        let earliest = "";
+
+        if (deliveryMode === "today") {
+          // للتسليم اليوم: نتحقق من أن الفترة لم تنتهِ بعد (بناءً على الوقت الحالي)
+          // وأن الطلب سيكون جاهزاً قبل نهاية هذه الفترة
+          const slotEnd = slotEndHours[s.id];
+          const currentTotalMinutes = currentHour * 60 + currentMin;
+          const slotEndMinutes = slotEnd * 60;
+
+          if (currentTotalMinutes < slotEndMinutes && isReadyToday && readyHour <= slotEnd) {
+            available = true;
+            earliest = formatTime(tempEnd);
+          } else if (!isReadyToday) {
+            // الطلب سيكون جاهزاً غداً - لا يمكن تسليمه "اليوم"
+            available = false;
+          }
+        } else if (deliveryMode === "hour") {
+          // التسليم خلال ساعة: نتحقق أن الفترة لم تنتهِ بعد والطلب جاهز خلالها
+          const slotEnd = slotEndHours[s.id];
+          const currentTotalMinutes = currentHour * 60 + currentMin;
+          const slotEndMinutes = slotEnd * 60;
+
+          if (currentTotalMinutes < slotEndMinutes && isReadyToday && readyHour <= slotEnd) {
+            available = true;
+            earliest = formatTime(tempEnd);
+          } else if (!isReadyToday) {
+            // خارج ساعات العمل - الطلب سيكون جاهزاً في اليوم التالي
+            available = false;
+          }
+        }
+
+        return { ...s, available, earliest };
+      });
+    };
+
+    // هل التسليم "اليوم" متاحًا؟ (خارج ساعات العمل لا يمكن التسليم اليوم)
+    const isTodayDeliveryPossible = currentHour >= WORK_START && currentHour < WORK_END;
+    const isHourDeliveryPossible = currentHour >= WORK_START && currentHour < WORK_END;
+
+    return {
+      readyTime: tempEnd,
+      readyTimeStr: formatTime(tempEnd),
+      readyDateStr: formatDate(tempEnd),
+      currentStr: formatTime(now),
+      dayProgress,
+      timeSlots: getAvailableSlots(),
+      isWorkingHours: currentHour >= WORK_START && currentHour < WORK_END,
+      isTodayDeliveryPossible,
+      isHourDeliveryPossible,
+      workStart: "8:00 صباحاً",
+      workEnd: "8:00 مساءً",
+    };
+  }, [deliveryMode, estimatedHours]);
+
+  // تبديل تلقائي من "اليوم"/"خلال ساعة" إلى "غداً" خارج ساعات العمل
+  useEffect(() => {
+    if (step === 2 && !deliveryEstimate.isWorkingHours) {
+      if (deliveryMode === "today" || deliveryMode === "hour") {
+        setDeliveryMode("tomorrow");
+        setDeliveryTimeSlot("");
+      }
+    }
+  }, [step, deliveryEstimate.isWorkingHours, deliveryMode]);
+
+  const visibleServices = showAllServices
+    ? Object.values(dynamicSpecs)
+    : Object.values(dynamicSpecs).slice(0, 3);
 
   function canProceed(): boolean {
     if (step === 0) return !!serviceType;
     if (step === 1 && printRange === "custom") return pages > 0;
-    if (step === 2) return !!deliveryMode && (deliveryMode !== "scheduled" || !!deliveryDate);
+    if (step === 2) {
+      if (!deliveryMode) return false;
+      if (deliveryMode === "scheduled" && !deliveryDate) return false;
+      return true;
+    }
     if (step === 3) {
       if (!custName.trim() || !custPhone.trim()) return false;
       if (!isValidAlgerianPhone(custPhone)) return false;
@@ -277,50 +440,222 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
     return true;
   }
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFileName(f.name);
-    const ext = (f.name.split(".").pop() || "").toUpperCase();
-    setFileType(ext);
-    setFileSize(f.size);
+  async function processFile(f: File) {
+    // التحقق من الصيغة
+    const ACCEPTED = [".pdf", ".docx", ".jpg", ".jpeg", ".png", ".webp"];
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    if (!ACCEPTED.includes(`.${ext}`)) {
+      setAnalysisPhase("error");
+      setUploadError(`صيغة الملف ".${ext}" غير مدعومة. الصيغ المدعومة: ${ACCEPTED.join(", ")}`);
+      return;
+    }
+    // التحقق من الحجم
+    if (f.size > 50 * 1024 * 1024) {
+      setAnalysisPhase("error");
+      setUploadError(`حجم الملف ${(f.size / (1024 * 1024)).toFixed(1)} ميغابايت يتجاوز الحد الأقصى (50 ميغابايت)`);
+      return;
+    }
+    if (f.size === 0) {
+      setAnalysisPhase("error");
+      setUploadError("الملف فارغ — يرجى اختيار ملف آخر");
+      return;
+    }
 
-    // تشغيل التحليل الحقيقي
+    setFileName(f.name);
+    setFileType(ext.toUpperCase());
+    setFileSize(f.size);
+    setFileDataUrl("");
+    setUploadError("");
+
+    // ─── المرحلة 1: رفع الملف ───
+    setAnalysisPhase("uploading");
+    setUploadStatus("uploading");
+    setUploadProgress(0);
+
+    try {
+      const CHUNK_THRESHOLD = 900 * 1024; // 900 كيلوبايت
+      const CHUNK_SIZE = 900 * 1024;
+
+      let storedFileName: string;
+
+      if (f.size <= CHUNK_THRESHOLD) {
+        // ملف صغير — رفع مباشر
+        const formData = new FormData();
+        formData.append("file", f);
+
+        storedFileName = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/orders/upload");
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              setUploadProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status === 200) {
+              const data = JSON.parse(xhr.responseText);
+              resolve(data.storedFileName);
+            } else {
+              let msg = `فشل رفع الملف — رمز الخطأ: ${xhr.status}`;
+              try { const d = JSON.parse(xhr.responseText); if (d.error) msg = d.error; } catch {}
+              reject(new Error(msg));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error("خطأ في الاتصال بالخادم. تحقق من اتصالك بالإنترنت."));
+          xhr.send(formData);
+        });
+      } else {
+        // ملف كبير — رفع مجزأ (لتجاوز حد 1 ميغا في البوابة)
+        const fileId = crypto.randomUUID();
+        const totalChunks = Math.ceil(f.size / CHUNK_SIZE);
+        let overallLoaded = 0;
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, f.size);
+          const blob = f.slice(start, end);
+
+          const formData = new FormData();
+          formData.append("chunk", blob, `chunk_${i}`);
+          formData.append("fileId", fileId);
+          formData.append("chunkIndex", String(i));
+          formData.append("totalChunks", String(totalChunks));
+          formData.append("fileName", f.name);
+          formData.append("fileSize", String(f.size));
+          formData.append("fileExt", ext);
+
+          const result = await new Promise<{ complete: boolean; storedFileName?: string; error?: string }>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/orders/upload-chunk");
+
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                const chunkPct = e.loaded / e.total;
+                const pct = Math.round(((overallLoaded + start + e.loaded) / f.size) * 100);
+                setUploadProgress(Math.min(pct, 99));
+              }
+            };
+
+            xhr.onload = () => {
+              if (xhr.status === 200) {
+                resolve(JSON.parse(xhr.responseText));
+              } else {
+                let msg = `فشل رفع الجزء ${i + 1}/${totalChunks} — رمز الخطأ: ${xhr.status}`;
+                try { const d = JSON.parse(xhr.responseText); if (d.error) msg = d.error; } catch {}
+                reject(new Error(msg));
+              }
+            };
+
+            xhr.onerror = () => reject(new Error(`خطأ في الاتصال أثناء رفع الجزء ${i + 1}/${totalChunks}`));
+            xhr.send(formData);
+          });
+
+          overallLoaded = end;
+
+          if (result.complete && result.storedFileName) {
+            storedFileName = result.storedFileName;
+          }
+        }
+        // إذا لم نحصل على storedFileName من آخر جزء
+        if (!storedFileName) {
+          throw new Error("فشل في تجميع الملف. حاول مرة أخرى.");
+        }
+      }
+
+      setFileDataUrl(storedFileName);
+      setUploadProgress(100);
+      setUploadStatus("done");
+    } catch (uploadErr) {
+      setAnalysisPhase("error");
+      setUploadError((uploadErr as Error).message || "فشل رفع الملف");
+      setUploadStatus("error");
+      return;
+    }
+
+    // ─── المرحلة 2: التحليل المحلي ───
     setAnalyzing(true);
     setAnalysis(null);
+    setAnalysisPhase("local-analysis");
+
     try {
-      const result = await analyzeFileReal(f);
-      setAnalysis(result);
-      setTotalPages(result.pageCount);
-      setPages(result.pageCount);
+      const basicResult = await analyzeFileReal(f);
+
+      // عرض النتيجة الأساسية فوراً
+      setAnalysis(basicResult);
+      setTotalPages(basicResult.pageCount);
+      setPages(basicResult.pageCount);
       setPrintRange("all");
       setPageRange("");
-      setServiceType(result.detectedService);
+      setServiceType(basicResult.detectedService);
 
-      // تطبيق التوصيات على specOptions حسب نوع الخدمة المكتشفة
-      const spec = DEFAULT_SERVICE_SPECS[result.detectedService];
+      // تطبيق التوصيات الأساسية
+      const spec = dynamicSpecs[basicResult.detectedService] || STATIC_SERVICE_SPECS[basicResult.detectedService];
       const defaults: Record<string, string> = {};
-      spec.sections.forEach((section) => {
-        // اختيار أول خيار افتراضي أو التوصية
-        if (section.optionKey === "color" && result.suggestedColor) {
-          defaults.color = result.suggestedColor;
-        } else if (section.optionKey === "paperSize" && result.suggestedPaperSize) {
-          defaults.paperSize = result.suggestedPaperSize;
-        } else if (section.optionKey === "paperType" && result.suggestedPaperType) {
-          defaults.paperType = result.suggestedPaperType;
-        } else if (section.optionKey === "binding" && result.suggestedBinding) {
-          defaults.binding = result.suggestedBinding;
-        } else if (section.options.length > 0) {
-          // أول خيار كافتراضي
-          defaults[section.optionKey] = section.options[0].id;
-        }
-      });
+      if (spec) {
+        spec.sections.forEach((section) => {
+          if (section.optionKey === "color" && basicResult.suggestedColor) {
+            defaults.color = basicResult.suggestedColor;
+          } else if (section.optionKey === "paperSize" && basicResult.suggestedPaperSize) {
+            defaults.paperSize = basicResult.suggestedPaperSize;
+          } else if (section.optionKey === "paperType" && basicResult.suggestedPaperType) {
+            defaults.paperType = basicResult.suggestedPaperType;
+          } else if (section.optionKey === "binding" && basicResult.suggestedBinding) {
+            defaults.binding = basicResult.suggestedBinding;
+          } else if (section.options.length > 0) {
+            defaults[section.optionKey] = section.options[0].id;
+          }
+        });
+      }
       setSpecOptions(defaults);
 
-      toast.success("اكتمل التحليل الحقيقي للملف", {
-        description: `${result.detectedServiceName} · ${result.pageCount} صفحة فعلية · دقة ${result.confidence}%`,
+      toast.success("اكتمل التحليل الأساسي", {
+        description: `${basicResult.detectedServiceName} · ${basicResult.pageCount} صفحة`,
+      });
+
+      // ─── المرحلة 3: التحليل الذكي بالـ VLM ───
+      setAnalysisPhase("ai-analysis");
+
+      analyzeFileWithAI(f, basicResult).then(({ vlmAnalysis, enhancedAnalysis }) => {
+        if (vlmAnalysis) {
+          setAnalysis(enhancedAnalysis);
+          setServiceType(enhancedAnalysis.detectedService as ServiceType);
+          setTotalPages(enhancedAnalysis.pageCount);
+          setPages(enhancedAnalysis.pageCount);
+
+          const updatedSpec = dynamicSpecs[enhancedAnalysis.detectedService] || STATIC_SERVICE_SPECS[enhancedAnalysis.detectedService as ServiceType];
+          const updatedDefaults: Record<string, string> = {};
+          if (updatedSpec) {
+            updatedSpec.sections.forEach((section) => {
+              if (section.optionKey === "color" && enhancedAnalysis.suggestedColor) {
+                updatedDefaults.color = enhancedAnalysis.suggestedColor;
+              } else if (section.optionKey === "paperSize" && enhancedAnalysis.suggestedPaperSize) {
+                updatedDefaults.paperSize = enhancedAnalysis.suggestedPaperSize;
+              } else if (section.optionKey === "paperType" && enhancedAnalysis.suggestedPaperType) {
+                updatedDefaults.paperType = enhancedAnalysis.suggestedPaperType;
+              } else if (section.optionKey === "binding" && enhancedAnalysis.suggestedBinding) {
+                updatedDefaults.binding = enhancedAnalysis.suggestedBinding;
+              } else if (section.options.length > 0) {
+                updatedDefaults[section.optionKey] = section.options[0].id;
+              }
+            });
+          }
+          setSpecOptions(updatedDefaults);
+
+          toast.success("🤖 تم التحليل الذكي", {
+            description: `${vlmAnalysis.documentType} · ${vlmAnalysis.qualityAssessment} · دقة ${vlmAnalysis.confidence}%`,
+          });
+        }
+        setAnalysisPhase("done");
+      }).catch(() => {
+        // VLM فشل — التحليل الأساسي كافٍ
+        setAnalysisPhase("done");
       });
     } catch (err) {
+      setAnalysisPhase("error");
+      setUploadError((err as Error).message || "تعذّر تحليل الملف. تأكد أن الملف غير تالف.");
       toast.error("تعذّر تحليل الملف", { description: (err as Error).message });
     } finally {
       setAnalyzing(false);
@@ -339,6 +674,7 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
           fileName: fileName || null,
           fileType: fileType || null,
           fileSize: fileSize || null,
+          fileData: fileDataUrl || null,
           smartAnalysis: analysis
             ? {
                 detectedService: analysis.detectedService,
@@ -379,11 +715,10 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
             deliveryMethod: custDelivery,
             address: custAddress,
           },
-          delivery: { mode: deliveryMode, date: deliveryDate },
+          delivery: { mode: deliveryMode, date: deliveryDate, timeSlot: deliveryTimeSlot },
           // السعر النهائي بعد تطبيق العرض
           finalTotal: finalPricing.total,
           appliedOfferCode: appliedOffer?.code || null,
-          ...(shopId ? { shopId } : {}),
         }),
       });
       if (!res.ok) throw new Error("فشل إرسال الطلب");
@@ -402,6 +737,9 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
       setServiceType(null);
       setFileName("");
       setAnalysis(null);
+      setAnalysisPhase("idle");
+      setUploadError("");
+      setUploadStatus("idle");
       setTotalPages(10);
       setPages(10);
       setPrintRange("all");
@@ -417,9 +755,6 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
       setCustWhatsapp("");
       setCustEmail("");
       setCustAddress("");
-      setDeliveryMode("today");
-      setDeliveryDate("");
-      setCustDelivery("pickup");
     } catch (e) {
       toast.error("خطأ في إرسال الطلب", { description: (e as Error).message });
     } finally {
@@ -441,15 +776,17 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
   }
 
   // عند اختيار خدمة يدوياً، عيّن الإعدادات الافتراضية للخدمة
-  function handleServiceSelect(type: ServiceType) {
-    setServiceType(type);
-    const spec = activeSpecs[type];
+  function handleServiceSelect(type: string) {
+    setServiceType(type as ServiceType);
+    const spec = dynamicSpecs[type] || STATIC_SERVICE_SPECS[type as ServiceType];
     const defaults: Record<string, string> = {};
-    spec.sections.forEach((section) => {
-      if (section.options.length > 0) {
-        defaults[section.optionKey] = section.options[0].id;
-      }
-    });
+    if (spec) {
+      spec.sections.forEach((section) => {
+        if (section.options.length > 0) {
+          defaults[section.optionKey] = section.options[0].id;
+        }
+      });
+    }
     setSpecOptions(defaults);
   }
 
@@ -486,261 +823,20 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
           </div>
         </div>
 
-        {/* ===== الخطوة 0: اختيار الخدمة + رفع الملف + التحليل الحقيقي ===== */}
+        {/* ===== الخطوة 0: رفع الملف والتحليل المحسّن ===== */}
         {step === 0 && (
-          <div className="space-y-6">
-            <div>
-              <Label className="text-base font-semibold mb-3 block">ارفع ملفك هنا</Label>
-              <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1">
-                <Brain className="h-3.5 w-3.5 text-amber-600" />
-                نظام ذكي سيحلل ملفك فعلياً ويستخرج كل المعلومات الحقيقية
-              </p>
-              <label className="block cursor-pointer relative">
-                <div className="border-2 border-dashed border-amber-300 bg-amber-50/40 rounded-2xl p-6 md:p-8 text-center hover:bg-amber-50 transition-colors">
-                  <div className="w-14 h-14 mx-auto rounded-2xl gold-gradient flex items-center justify-center mb-3">
-                    <Upload className="h-7 w-7 text-white" />
-                  </div>
-                  {fileName ? (
-                    <div>
-                      <div className="flex items-center justify-center gap-2 text-sm font-medium text-amber-800 break-all">
-                        <FileText className="h-4 w-4 shrink-0" />
-                        {fileName}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">انقر لتغيير الملف</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="font-semibold text-sm">اسحب وأفلت ملفك هنا</div>
-                      <div className="text-xs text-muted-foreground mt-1">أو انقر للاختيار من جهازك</div>
-                    </div>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  onChange={handleFile}
-                  accept=".pdf,.docx,.jpg,.jpeg,.png,.webp"
-                />
-              </label>
-              <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                {["PDF", "DOCX", "JPG", "PNG", "WEBP"].map((t) => (
-                  <span key={t} className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
-                    {t}
-                  </span>
-                ))}
-              </div>
-              <p className="text-xs text-center text-muted-foreground mt-2">
-                🔒 ملفاتك آمنة — تُعالج محلياً في متصفحك ولا تُرفع لأي خادم خارجي
-              </p>
-            </div>
-
-            {/* التحليل الحقيقي جارٍ */}
-            {analyzing && (
-              <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-400 flex items-center justify-center">
-                    <Brain className="h-5 w-5 text-white animate-pulse" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-sm flex items-center gap-2">
-                      جارٍ التحليل الحقيقي للملف
-                      <span className="flex gap-0.5">
-                        <span className="w-1 h-1 bg-amber-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-1 h-1 bg-amber-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-1 h-1 bg-amber-600 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">نقرأ محتوى الملف الفعلي ونستخرج الصفحات والنص والبيانات الوصفية...</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* نتيجة التحليل الحقيقي */}
-            {analysis && !analyzing && (
-              <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
-                    <Check className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-sm">اكتمل التحليل الحقيقي للملف</div>
-                    <div className="text-xs text-muted-foreground">
-                      بيانات حقيقية مستخرجة من الملف — يمكنك تعديلها في الخطوة التالية
-                    </div>
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs text-muted-foreground">الدقة</div>
-                    <div className="text-lg font-bold text-emerald-700">{analysis.confidence}%</div>
-                  </div>
-                </div>
-
-                {/* ===== معاينة الملف البصرية ===== */}
-                {analysis.thumbnailUrl && (
-                  <div className="mb-4 flex gap-4 items-start">
-                    <div className="shrink-0">
-                      <div className="relative w-28 h-36 rounded-lg overflow-hidden border-2 border-emerald-200 bg-white shadow-sm">
-                        
-                        <img
-                          src={analysis.thumbnailUrl}
-                          alt="معاينة الملف"
-                          className="w-full h-full object-cover"
-                        />
-                        {analysis.fileType === "PDF" && (
-                          <div className="absolute top-1 left-1 bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">
-                            PDF
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-center text-xs text-emerald-700 mt-1 font-medium">
-                        {analysis.isPortrait ? "عمودي" : "أفقي"}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0 space-y-2">
-                      {analysis.fileNature && (
-                        <div className="inline-block text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-full px-3 py-1">
-                          {analysis.fileNature}
-                        </div>
-                      )}
-                      <div className="text-xs text-emerald-800 break-all">
-                        📄 {analysis.fileName}
-                      </div>
-                      <div className="text-xs text-emerald-700">
-                        📦 {analysis.fileSizeKB} ك.ب · {analysis.fileType}
-                      </div>
-                      {analysis.imageDimensions && (
-                        <div className="text-xs text-emerald-800 flex flex-wrap gap-1.5">
-                          <span className="px-2 py-0.5 rounded bg-white border border-emerald-200">
-                            📐 {analysis.imageDimensions.width}×{analysis.imageDimensions.height}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-white border border-emerald-200">
-                            {analysis.imageDimensions.megapixels} ميجابكسل
-                          </span>
-                        </div>
-                      )}
-                      {analysis.dominantColors && analysis.dominantColors.length > 0 && (
-                        <div className="text-xs text-emerald-800 flex items-center gap-2">
-                          <span>الألوان السائدة:</span>
-                          {analysis.dominantColors.map((c, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-emerald-200"
-                            >
-                              {c.startsWith("rgb") ? (
-                                <span
-                                  className="w-3 h-3 rounded-full border border-neutral-200"
-                                  style={{ backgroundColor: c }}
-                                />
-                              ) : null}
-                              {c.startsWith("rgb") ? "" : c}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* بدون معاينة (PDF فشل أو DOCX) */}
-                {!analysis.thumbnailUrl && (
-                  <div className="mb-3 flex items-center gap-3 p-3 rounded-lg bg-white border border-emerald-200">
-                    <div className="w-12 h-12 rounded-lg bg-neutral-900 flex items-center justify-center text-amber-400 text-xl font-bold shrink-0">
-                      {analysis.fileType === "PDF" ? "📄" : analysis.fileType === "DOCX" ? "📝" : "📁"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-emerald-800 break-all">{analysis.fileName}</div>
-                      {analysis.fileNature && (
-                        <div className="text-xs text-emerald-700">{analysis.fileNature}</div>
-                      )}
-                      <div className="text-xs text-emerald-600">
-                        📦 {analysis.fileSizeKB} ك.ب · {analysis.fileType}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                  <AnalysisChip label="الخدمة" value={analysis.detectedServiceName} />
-                  <AnalysisChip label="الصفحات الفعلية" value={`${analysis.pageCount}`} />
-                  <AnalysisChip label="الطباعة" value={COLORS.find((c) => c.id === analysis.suggestedColor)?.label || "—"} />
-                  <AnalysisChip label="الورق" value={PAPER_TYPES.find((p) => p.id === analysis.suggestedPaperType)?.label || "—"} />
-                </div>
-                {(analysis.pdfTitle || analysis.pdfAuthor) && (
-                  <div className="mb-2 text-xs text-emerald-800 flex flex-wrap items-center gap-2">
-                    {analysis.pdfTitle && (
-                      <span className="px-2 py-0.5 rounded bg-white border border-emerald-200">
-                        📄 {analysis.pdfTitle}
-                      </span>
-                    )}
-                    {analysis.pdfAuthor && (
-                      <span className="px-2 py-0.5 rounded bg-white border border-emerald-200">
-                        ✍️ {analysis.pdfAuthor}
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="space-y-1">
-                  {analysis.insights.map((ins, i) => (
-                    <div key={i} className="flex items-start gap-1.5 text-xs text-emerald-800">
-                      <Sparkles className="h-3 w-3 mt-0.5 shrink-0" />
-                      <span>{ins}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* اختيار الخدمة */}
-            <div>
-              <Label className="text-base font-semibold mb-1 block">ماذا تريد أن تفعل؟</Label>
-              <p className="text-xs text-muted-foreground mb-3">
-                الأكثر طلباً — أو ارفع ملفك أولاً لتحديد تلقائي
-              </p>
-              <div className="space-y-3">
-                {visibleServices.map((s, i) => (
-                  <button
-                    key={s.type}
-                    onClick={() => handleServiceSelect(s.type)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-right transition-all ${
-                      serviceType === s.type
-                        ? "border-amber-400 bg-amber-50 shadow-sm"
-                        : "border-border bg-card hover:border-amber-300 hover:bg-amber-50/30"
-                    }`}
-                  >
-                    <div className="relative">
-                      <div className="text-2xl md:text-3xl">{s.emoji}</div>
-                      <span className="absolute -top-2 -right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-neutral-900 text-amber-400">
-                        #{i + 1}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm">{s.name}</span>
-                        {s.isPopular && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-                            الأكثر طلباً
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{s.description}</div>
-                    </div>
-                    <div className="text-left shrink-0">
-                      <div className="text-xs text-muted-foreground">يختاره</div>
-                      <div className="text-sm font-bold text-amber-700">{s.popularity}%</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {!showAllServices && (
-                <button
-                  onClick={() => setShowAllServices(true)}
-                  className="w-full mt-3 py-2.5 text-sm text-amber-700 hover:text-amber-800 font-medium border border-dashed border-amber-300 rounded-xl hover:bg-amber-50 transition-colors"
-                >
-                  عرض خدمات أخرى ↓
-                </button>
-              )}
-            </div>
-          </div>
+          <UploadStep
+            fileName={fileName}
+            fileType={fileType}
+            fileSize={fileSize}
+            analysisPhase={analysisPhase}
+            uploadProgress={uploadProgress}
+            analysis={analysis}
+            analyzing={analyzing}
+            serviceType={serviceType}
+            errorMessage={uploadError}
+            onFileSelected={processFile}
+          />
         )}
 
         {/* ===== الخطوة 1: إعدادات الطباعة ===== */}
@@ -832,15 +928,33 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
             )}
 
             {/* ===== أقسام المواصفات المخصصة لكل خدمة ===== */}
-            {currentSpec && currentSpec.sections.map((section) => {
+            {currentSpec && currentSpec.sections.map((section, sectionIdx) => {
               const selectedId = specOptions[section.optionKey];
+              const isSelectedOpt = section.options.find((o) => o.id === selectedId);
+              const isExtra = sectionIdx >= 3; // الأقسام بعد الثالث قابلة للطي
+              const priceImpact = isSelectedOpt
+                ? (() => {
+                    if (isSelectedOpt.price && isSelectedOpt.price > 0) return `+${formatDA(isSelectedOpt.price)}/نسخة`;
+                    if (isSelectedOpt.pricePerPage && isSelectedOpt.pricePerPage > 0) return `+${formatDA(isSelectedOpt.pricePerPage)}/صفحة`;
+                    if (isSelectedOpt.multiplier && isSelectedOpt.multiplier !== 1) return `×${isSelectedOpt.multiplier}`;
+                    return undefined;
+                  })()
+                : undefined;
               const cols = section.options.length === 2 ? "grid-cols-2" :
                            section.options.length === 3 ? "grid-cols-3" :
                            section.options.length === 4 ? "grid-cols-2 md:grid-cols-4" :
                            section.options.length === 5 ? "grid-cols-2 md:grid-cols-5" :
                            "grid-cols-2 md:grid-cols-3";
               return (
-                <Section key={section.id} title={section.title} hint={section.hint}>
+                <Section
+                  key={section.id}
+                  title={section.title}
+                  hint={section.hint}
+                  collapsible={isExtra}
+                  defaultOpen={sectionIdx < 5}
+                  badge={isExtra && isSelectedOpt && priceImpact ? priceImpact : undefined}
+                  priceImpact={isExtra && priceImpact ? priceImpact : undefined}
+                >
                   <div className={`grid gap-3 ${cols}`}>
                     {section.options.map((opt) => {
                       const price = opt.price !== undefined && opt.price !== 0
@@ -900,46 +1014,190 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
 
         {/* ===== الخطوة 2: وقت التسليم ===== */}
         {step === 2 && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {DELIVERY_OPTIONS.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setDeliveryMode(d.id)}
-                  className={`relative p-5 rounded-2xl border-2 text-right transition-all ${
-                    deliveryMode === d.id
-                      ? "border-amber-400 bg-amber-50 shadow-sm"
-                      : "border-border bg-card hover:border-amber-300"
-                  }`}
-                >
-                  {d.badge && (
-                    <span className="absolute top-3 left-3 text-xs font-bold px-2 py-0.5 rounded-full bg-rose-500 text-white urgent-pulse">
-                      {d.badge}
-                    </span>
-                  )}
-                  <div className="text-3xl mb-2">{d.emoji}</div>
-                  <div className="font-bold text-sm">{d.label}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{d.description}</div>
-                  {d.surcharge > 0 && (
-                    <div className="text-xs text-amber-700 font-medium mt-1">+{formatDA(d.surcharge)}</div>
-                  )}
-                </button>
-              ))}
+          <div className="space-y-5">
+            {/* شريط حالة اليوم والتقدم */}
+            <div className="rounded-2xl bg-gradient-to-l from-amber-50 to-orange-50 border border-amber-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${deliveryEstimate.isWorkingHours ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                  <span className="text-xs font-medium text-amber-900">
+                    {deliveryEstimate.isWorkingHours ? "مفتوح الآن" : "مغلق — يبدأ من 8 صباحاً"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-amber-800">
+                  <Timer className="h-3.5 w-3.5" />
+                  <span>الآن {deliveryEstimate.currentStr}</span>
+                </div>
+              </div>
+              <div className="relative h-2 rounded-full bg-amber-200/60 overflow-hidden">
+                <div
+                  className="absolute inset-y-0 right-0 bg-gradient-to-l from-amber-500 to-amber-400 rounded-full transition-all duration-700"
+                  style={{ width: `${deliveryEstimate.dayProgress}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[10px] text-amber-700">{deliveryEstimate.workStart}</span>
+                <span className="text-[10px] text-amber-700">{deliveryEstimate.workEnd}</span>
+              </div>
             </div>
+
+            {/* خيارات سرعة التسليم */}
+            <div>
+              <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-600" />
+                متى تحتاج طلبك؟
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {DELIVERY_OPTIONS.map((d) => {
+                  const isSelected = deliveryMode === d.id;
+                  // حساب الوقت المتوقع لكل خيار
+                  const optHours = estimateDeliveryHours(d.id, pages, copies);
+                  const optReady = new Date(Date.now() + optHours * 3600000);
+                  const readyH = optReady.getHours();
+                  const readyM = optReady.getMinutes().toString().padStart(2, "0");
+                  const readyStr = readyH === 0 ? `12:${readyM} ص` : readyH < 12 ? `${readyH}:${readyM} ص` : readyH === 12 ? `12:${readyM} م` : `${readyH - 12}:${readyM} م`;
+
+                  // تعطيل "اليوم" و"خلال ساعة" خارج ساعات العمل
+                  const isDisabled = (d.id === "today" && !deliveryEstimate.isTodayDeliveryPossible)
+                    || (d.id === "hour" && !deliveryEstimate.isHourDeliveryPossible);
+
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => { if (!isDisabled) { setDeliveryMode(d.id); setDeliveryTimeSlot(""); } }}
+                      className={`relative p-3.5 rounded-2xl border-2 text-right transition-all duration-200 ${
+                        isDisabled
+                          ? "border-border bg-muted/40 opacity-50 cursor-not-allowed"
+                          : isSelected
+                          ? "border-amber-500 bg-amber-50 shadow-md shadow-amber-200/50 scale-[1.02]"
+                          : "border-border bg-card hover:border-amber-300 hover:shadow-sm"
+                      }`}
+                      disabled={isDisabled}
+                    >
+                      {d.badge && (
+                        <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
+                          {d.badge}
+                        </span>
+                      )}
+                      {isDisabled && (
+                        <span className="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-neutral-400 text-white">
+                          مغلق
+                        </span>
+                      )}
+                      <div className="text-2xl mb-1.5">{d.emoji}</div>
+                      <div className="font-bold text-sm leading-tight">{d.label}</div>
+                      {isDisabled ? (
+                        <div className="text-[11px] mt-1 text-rose-500 font-medium">غير متاح الآن</div>
+                      ) : (
+                        <div className={`text-[11px] mt-1 font-semibold ${isSelected ? "text-amber-700" : "text-muted-foreground"}`}>
+                          ≈ {readyStr}
+                        </div>
+                      )}
+                      {d.surcharge > 0 && !isDisabled && (
+                        <div className="text-[11px] text-rose-600 font-bold mt-0.5">+{formatDA(d.surcharge)}</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {!deliveryEstimate.isWorkingHours && (deliveryMode === "today" || deliveryMode === "hour") && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                  <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  <span>المطبعة مغلقة حالياً — اختر <strong>غداً</strong> أو <strong>تاريخ محدد</strong> للتسليم</span>
+                </div>
+              )}
+            </div>
+
+            {/* الفترات الزمنية (لليوم وغداً) */}
+            {(deliveryMode === "today" || deliveryMode === "tomorrow" || deliveryMode === "hour") && (
+              <div>
+                <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-amber-600" />
+                  اختر الفترة الزمنية المفضلة
+                </h3>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {deliveryEstimate.timeSlots.map((slot) => {
+                    const SlotIcon = slot.icon;
+                    const isSelected = deliveryTimeSlot === slot.id;
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => setDeliveryTimeSlot(slot.id)}
+                        className={`p-3.5 rounded-xl border-2 text-center transition-all duration-200 ${
+                          isSelected
+                            ? "border-amber-500 bg-amber-50 shadow-sm"
+                            : slot.available
+                            ? "border-border bg-card hover:border-amber-300"
+                            : "border-border bg-muted/50 opacity-50 cursor-not-allowed"
+                        }`}
+                        disabled={!slot.available}
+                      >
+                        <SlotIcon className={`h-5 w-5 mx-auto mb-1.5 ${isSelected ? "text-amber-600" : "text-muted-foreground"}`} />
+                        <div className={`text-xs font-bold ${isSelected ? "text-amber-800" : ""}`}>{slot.label}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">{slot.time}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* اختيار تاريخ محدد */}
             {deliveryMode === "scheduled" && (
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                <Label className="text-sm font-medium">اختر التاريخ</Label>
+              <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-amber-600" />
+                  اختر تاريخ التسليم
+                </Label>
                 <Input
                   type="date"
                   value={deliveryDate}
+                  min={new Date().toISOString().split("T")[0]}
                   onChange={(e) => setDeliveryDate(e.target.value)}
                   className="mt-2 max-w-xs"
                 />
               </div>
             )}
-            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 flex items-center gap-2">
-              <Clock className="h-4 w-4 shrink-0" />
-              <span>الوقت المتوقع للتسليم: <strong>{estimatedHours} {estimatedHours === 1 ? "ساعة" : estimatedHours <= 10 ? "ساعات" : "ساعة"}</strong> بعد تأكيد الطلب</span>
+
+            {/* ملخص التسليم المتوقع */}
+            <div className={`rounded-xl border p-4 flex items-start gap-3 ${
+              deliveryMode === "hour"
+                ? "bg-rose-50 border-rose-200"
+                : "bg-emerald-50 border-emerald-200"
+            }`}>
+              <div className={`mt-0.5 p-2 rounded-lg ${
+                deliveryMode === "hour" ? "bg-rose-100" : "bg-emerald-100"
+              }`}>
+                {deliveryMode === "hour" ? (
+                  <Zap className={`h-4 w-4 ${deliveryMode === "hour" ? "text-rose-600" : "text-emerald-600"}`} />
+                ) : (
+                  <Clock className={`h-4 w-4 text-emerald-600`} />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-neutral-900">
+                  {deliveryMode === "hour" && "تسليم عاجل"}
+                  {deliveryMode === "today" && "تسليم اليوم"}
+                  {deliveryMode === "tomorrow" && "تسليم غداً"}
+                  {deliveryMode === "scheduled" && "تسليم في تاريخ محدد"}
+                </div>
+                <div className="text-xs text-neutral-600 mt-1">
+                  {deliveryMode === "scheduled" && deliveryDate ? (
+                    <>الاستلام: <strong>{deliveryDate}</strong></>
+                  ) : (
+                    <>
+                      التوقيت المقدّر: <strong className="text-base">{deliveryEstimate.readyTimeStr}</strong>{" "}
+                      — {deliveryEstimate.readyDateStr}
+                      <span className="text-muted-foreground"> ({estimatedHours} ساعة عمل)</span>
+                    </>
+                  )}
+                </div>
+                {deliveryTimeSlot && (
+                  <div className="text-xs text-amber-700 font-medium mt-1">
+                    الفترة المفضلة: {deliveryEstimate.timeSlots.find(s => s.id === deliveryTimeSlot)?.label}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1292,7 +1550,14 @@ export function NewOrderWizard({ onCreated, prefillOrder, onPrefillConsumed, sho
                     </>
                   )}
                   {step >= 2 && (
-                    <SummaryRow label="التسليم" value={DELIVERY_OPTIONS.find((d) => d.id === deliveryMode)?.label ?? ""} />
+                    <SummaryRow
+                      label="التسليم"
+                      value={
+                        deliveryTimeSlot
+                          ? `${DELIVERY_OPTIONS.find((d) => d.id === deliveryMode)?.label} — ${deliveryEstimate.timeSlots.find(s => s.id === deliveryTimeSlot)?.label}`
+                          : DELIVERY_OPTIONS.find((d) => d.id === deliveryMode)?.label
+                      }
+                    />
                   )}
                   {step >= 3 && custName && (
                     <SummaryRow label="العميل" value={custName} />
@@ -1393,18 +1658,71 @@ function Section({
   title,
   hint,
   children,
+  collapsible,
+  defaultOpen = true,
+  badge,
+  priceImpact,
 }: {
   title: string;
   hint?: string;
   children: React.ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+  badge?: string;
+  priceImpact?: string;
 }) {
-  return (
-    <div>
-      <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
-        <Label className="text-base font-semibold">{title}</Label>
-        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+  const [open, setOpen] = useState(defaultOpen);
+  const contentId = `section-${title.replace(/\s/g, "-")}`;
+
+  if (!collapsible) {
+    return (
+      <div>
+        <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+          <Label className="text-base font-semibold">{title}</Label>
+          <div className="flex items-center gap-2">
+            {badge && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold border border-amber-200">
+                {badge}
+              </span>
+            )}
+            {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+          </div>
+        </div>
+        {children}
       </div>
-      {children}
+    );
+  }
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
+        aria-expanded={open}
+        aria-controls={contentId}
+      >
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-semibold cursor-pointer">{title}</Label>
+          {badge && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold border border-amber-200">
+              {badge}
+            </span>
+          )}
+          {hint && <span className="text-xs text-muted-foreground hidden sm:inline">— {hint}</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {priceImpact && (
+            <span className="text-xs font-bold text-emerald-600">{priceImpact}</span>
+          )}
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </div>
+      </button>
+      {open && (
+        <div id={contentId} className="px-4 pb-4 pt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

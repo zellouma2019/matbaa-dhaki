@@ -53,6 +53,11 @@ model Shop {
   updatedAt      DateTime     @updatedAt
   orders         PrintOrder[]
   shopSettings   Setting[]    @relation("ShopSettings")
+  expenses       Expense[]
+  customers      Customer[]
+  auditLogs      AuditLog[]
+  formTemplates  FormTemplate[]
+  formRecords    FormRecord[]
 
   @@index([slug])
   @@index([isActive])
@@ -125,4 +130,92 @@ model SuperAdmin {
   teamMembers String @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// مصاريف المتجر
+model Expense {
+  id          String   @id @default(cuid())
+  shopId      String?
+  shop        Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  category    String
+  amount      Int
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([category])
+  @@index([date])
+}
+
+/// زبائن المتجر
+model Customer {
+  id        String   @id @default(cuid())
+  shopId    String?
+  shop      Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  notes     String?
+  totalOrders Int     @default(0)
+  totalSpent  Int     @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shopId, phone])
+  @@index([shopId])
+  @@index([phone])
+}
+
+/// سجل التدقيق
+model AuditLog {
+  id        String   @id @default(cuid())
+  shopId    String?
+  shop      Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderId   String?
+  action    String
+  details   String?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([shopId])
+  @@index([orderId])
+}
+
+/// قوالب النماذج الرسمية
+model FormTemplate {
+  id          String   @id @default(cuid())
+  shopId      String?
+  shop        Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title       String
+  icon        String   @default("FileText")
+  category    String   @default("general")
+  fields      String
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  records     FormRecord[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shopId])
+}
+
+/// سجلات النماذج المعبأة
+model FormRecord {
+  id          String   @id @default(cuid())
+  shopId      String?
+  shop        Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  templateId  String?
+  template    FormTemplate? @relation(fields: [templateId], references: [id])
+  title       String
+  data        String
+  status      String   @default("draft")
+  priority    String   @default("normal")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([status])
 }

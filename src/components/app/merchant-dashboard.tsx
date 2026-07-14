@@ -636,8 +636,10 @@ export function MerchantDashboard({ shopId, shopSlug }: { shopId: string; shopSl
                             <TableHead className="text-right text-xs text-slate-500 font-medium">رقم الطلب</TableHead>
                             <TableHead className="text-right text-xs text-slate-500 font-medium">الخدمة</TableHead>
                             <TableHead className="text-right text-xs text-slate-500 font-medium">العميل</TableHead>
-                            <TableHead className="text-right text-xs text-slate-500 font-medium hidden lg:table-cell">الهاتف</TableHead>
+                            <TableHead className="text-right text-xs text-slate-500 font-medium hidden md:table-cell">الهاتف</TableHead>
+                            <TableHead className="text-right text-xs text-slate-500 font-medium hidden lg:table-cell">التفاصيل</TableHead>
                             <TableHead className="text-right text-xs text-slate-500 font-medium">المجموع</TableHead>
+                            <TableHead className="text-right text-xs text-slate-500 font-medium hidden lg:table-cell">الربح</TableHead>
                             <TableHead className="text-right text-xs text-slate-500 font-medium">الحالة</TableHead>
                             <TableHead className="text-right text-xs text-slate-500 font-medium hidden sm:table-cell">التاريخ</TableHead>
                             <TableHead className="text-center text-xs w-10"></TableHead>

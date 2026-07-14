@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, X, Sparkles, Gift, Clock, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { type Offer, OFFER_THEMES } from "@/lib/offers";
-import { useShop } from "@/lib/shop-context";
 
 interface OfferPopupProps {
   offer: Offer | null;
@@ -20,7 +19,6 @@ interface OfferPopupProps {
 }
 
 export function OfferPopup({ offer, open, onClose, onAccept }: OfferPopupProps) {
-  const { shop, hasFeature } = useShop();
   const [copied, setCopied] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
 
@@ -32,8 +30,7 @@ export function OfferPopup({ offer, open, onClose, onAccept }: OfferPopupProps) 
     }
   }, [open]);
 
-  // إخفاء النافذة بالكامل إذا كانت الميزة غير مفعّلة أو لا يوجد عرض
-  if (!hasFeature("specialOffers") || !offer) return null;
+  if (!offer) return null;
 
   const theme = OFFER_THEMES[offer.theme] || OFFER_THEMES.gold;
 
@@ -134,7 +131,7 @@ export function OfferPopup({ offer, open, onClose, onAccept }: OfferPopupProps) 
             {/* مدة الصلاحية */}
             <div className={`flex items-center justify-center gap-1.5 text-xs ${theme.text} opacity-70 mb-4 animate-in fade-in duration-500`} style={{ animationDelay: "0.5s" }}>
               <Clock className="h-3.5 w-3.5" />
-              صالح لمدة {offer.validityDays} {offer.validityDays === 1 ? "يوم" : offer.validityDays <= 10 ? "أيام" : "يومًا"}
+              صالح لمدة {offer.validityDays} {offer.validityDays === 1 ? "يوم" : offer.validityDays <= 10 ? "أيام" : "يوم"}
             </div>
 
             {/* الأزرار */}
@@ -162,7 +159,7 @@ export function OfferPopup({ offer, open, onClose, onAccept }: OfferPopupProps) 
 
         {/* تذييل صغير */}
         <div className="bg-neutral-900 text-neutral-400 text-xs text-center py-2">
-          🎁 عرض حصري من {shop?.name || "المتجر"} · يُطبّق على طلبك القادم
+          🎁 عرض حصري من مطبعة الذكي · يُطبّق على طلبك القادم
         </div>
       </DialogContent>
     </Dialog>

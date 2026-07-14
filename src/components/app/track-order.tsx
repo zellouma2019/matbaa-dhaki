@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, Package, Inbox, QrCode, Download, Clock } from "lucide-react";
+import { Search, Package, Inbox, QrCode, Download, Clock, Loader2, FileText } from "lucide-react";
 import QRCode from "qrcode";
-import { useState as useReactState } from "react";
+import { downloadInvoicePDF } from "@/lib/pdf-invoice";
 import {
   STATUS_META,
   STATUS_FLOW,
@@ -16,27 +16,31 @@ import {
 } from "@/lib/print-config";
 import type { PrintOrderLite } from "@/lib/order-types";
 
-export function TrackOrder({ shopId, initialQuery }: { shopId?: string | null; initialQuery?: string | null }) {
-  const [query, setQuery] = useState(initialQuery || "");
+function isPdfFile(fileType: string | null): boolean {
+  if (!fileType) return false;
+  return fileType.toUpperCase() === "PDF";
+}
+
+function isImageFile(fileType: string | null): boolean {
+  if (!fileType) return false;
+  const t = fileType.toUpperCase();
+  return ["JPG", "JPEG", "PNG", "WEBP", "GIF"].includes(t);
+}
+
+function downloadFile(url: string, fileName: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+export function TrackOrder() {
+  const [query, setQuery] = useState("");
   const [orders, setOrders] = useState<PrintOrderLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-
-  // البحث التلقائي عند وجود initialQuery
-  const hasAutoSearched = useRef(false);
-  useEffect(() => {
-    if (initialQuery?.trim() && !hasAutoSearched.current) {
-      hasAutoSearched.current = true;
-      const q = initialQuery.trim();
-      setLoading(true);
-      setSearched(true);
-      fetch(`/api/track?q=${encodeURIComponent(q)}${shopId ? `&shopId=${shopId}` : ""}`)
-        .then((r) => r.json())
-        .then((d) => setOrders(d.orders || []))
-        .catch(() => setOrders([]))
-        .finally(() => setLoading(false));
-    }
-  }, [initialQuery, shopId]);
 
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -44,7 +48,7 @@ export function TrackOrder({ shopId, initialQuery }: { shopId?: string | null; i
     setLoading(true);
     setSearched(true);
     try {
-      const res = await fetch(`/api/track?q=${encodeURIComponent(query.trim())}${shopId ? `&shopId=${shopId}` : ""}`);
+      const res = await fetch(`/api/track?q=${encodeURIComponent(query.trim())}`);
       const d = await res.json();
       setOrders(d.orders || []);
     } catch {
@@ -122,7 +126,7 @@ function OrderTrackingCard({ order }: { order: PrintOrderLite }) {
     tomorrow: "غداً",
     scheduled: formatDateAr(delivery.date),
   };
-  const [qrUrl, setQrUrl] = useReactState("");
+  const [qrUrl, setQrUrl] = useState("");
 
   useEffect(() => {
     QRCode.toDataURL(
@@ -131,8 +135,12 @@ function OrderTrackingCard({ order }: { order: PrintOrderLite }) {
     ).then(setQrUrl).catch(() => {});
   }, [order.reference, order.total]);
 
-  function downloadInvoice() {
-    window.open(`/api/orders/${order.id}/invoice`, "_blank");
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  async function downloadInvoice() {
+    setPdfLoading(true);
+    await downloadInvoicePDF(order.id, order.reference);
+    setPdfLoading(false);
   }
 
   return (
@@ -209,12 +217,17 @@ function OrderTrackingCard({ order }: { order: PrintOrderLite }) {
             )}
             <button
               onClick={downloadInvoice}
-              className="flex items-center gap-2 p-2 rounded-lg bg-neutral-50 border border-neutral-200 hover:bg-neutral-100 transition-colors text-right"
+              disabled={pdfLoading}
+              className="flex items-center gap-2 p-2 rounded-lg bg-neutral-50 border border-neutral-200 hover:bg-neutral-100 transition-colors text-right disabled:opacity-60"
             >
-              <Download className="h-5 w-5 text-neutral-700 shrink-0" />
+              {pdfLoading ? (
+                <Loader2 className="h-5 w-5 text-amber-600 shrink-0 animate-spin" />
+              ) : (
+                <Download className="h-5 w-5 text-neutral-700 shrink-0" />
+              )}
               <div className="text-xs">
-                <div className="font-bold text-neutral-800">تنزيل الفاتورة</div>
-                <div className="text-muted-foreground">PDF</div>
+                <div className="font-bold text-neutral-800">{pdfLoading ? "جارٍ الإنشاء..." : "تنزيل الفاتورة PDF"}</div>
+                <div className="text-muted-foreground">ملف PDF جاهز</div>
               </div>
             </button>
           </div>
@@ -222,7 +235,7 @@ function OrderTrackingCard({ order }: { order: PrintOrderLite }) {
           {/* الوقت المتوقع */}
           <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-2">
             <Clock className="h-4 w-4 shrink-0" />
-            <span>الوقت المتوقع للتسليم: <strong>{order.estimatedHours} {order.estimatedHours === 1 ? "ساعة" : "ساعات"}</strong></span>
+            <span>الوقت المتوقع للتسليم: <strong>{order.estimatedHours} ساعة</strong></span>
           </div>
 
           {/* التفاصيل */}
@@ -231,7 +244,52 @@ function OrderTrackingCard({ order }: { order: PrintOrderLite }) {
             <Detail label="الهاتف" value={customer.phone} />
             <Detail label="عدد الصفحات" value={`${order.pages} صفحة × ${order.copies} نسخة`} />
             <Detail label="التسليم" value={DELIVERY_LABELS[delivery.mode] || delivery.mode} />
-            {order.fileName && <Detail label="الملف" value={order.fileName} />}
+            {order.fileName && order.fileData && (
+              <div className="col-span-2 rounded-lg bg-muted/30 p-2.5">
+                <div className="text-xs text-muted-foreground mb-2">الملف المرفوع</div>
+                <div className="flex items-start gap-3">
+                  {/* معاينة */}
+                  <div className="shrink-0">
+                    {isImageFile(order.fileType) && order.filePreview ? (
+                      <div className="relative w-20 h-24 rounded-lg overflow-hidden border-2 border-amber-200 shadow-sm">
+                        <img src={order.filePreview} alt={order.fileName} className="w-full h-full object-cover" />
+                      </div>
+                    ) : isPdfFile(order.fileType) && order.fileData.startsWith("file_") ? (
+                      <div className="relative w-20 h-24 rounded-lg overflow-hidden border-2 border-amber-200 shadow-sm bg-white">
+                        <img src={`/api/orders/${order.id}/thumbnail`} alt={order.fileName} className="w-full h-full object-contain" />
+                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-0.5">
+                          <span className="text-[8px] font-bold text-white">PDF</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-14 h-16 rounded-lg bg-neutral-900 flex flex-col items-center justify-center text-amber-400">
+                        <FileText className="h-5 w-5" />
+                        <span className="text-[8px] font-bold mt-0.5">{order.fileType}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate" dir="auto">{order.fileName}</div>
+                    <div className="flex flex-wrap gap-1 mt-1 text-[10px]">
+                      {order.fileType && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700">{order.fileType}</span>
+                      )}
+                      {order.fileSize ? (
+                        <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{Math.round(order.fileSize / 1024)} ك.ب</span>
+                      ) : null}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="mt-1.5 h-7 text-xs bg-neutral-900 hover:bg-neutral-800 text-white"
+                      onClick={() => downloadFile(`/api/orders/${order.id}/file`, order.fileName || "file")}
+                    >
+                      <Download className="h-3 w-3" />
+                      تنزيل الملف
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <Detail label="المجموع" value={formatDA(order.total)} highlight />
           </div>
         </div>

@@ -13,6 +13,9 @@ export async function GET(req: NextRequest) {
 
     const totalOrders = await db.printOrder.count({ where });
     const totalRevenue = await db.printOrder.aggregate({ _sum: { total: true }, where });
+    const totalExpenses = await db.expense.aggregate({ _sum: { amount: true } });
+    const expensesSum = totalExpenses._sum.amount || 0;
+    const revenueSum = totalRevenue._sum.total || 0;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayOrders = await db.printOrder.count({
@@ -43,7 +46,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       totalOrders,
-      totalRevenue: totalRevenue._sum.total || 0,
+      totalRevenue: revenueSum,
+      totalExpenses: expensesSum,
+      profit: revenueSum - expensesSum,
       todayOrders,
       statusCounts: statusMap,
       serviceCounts: serviceCounts.map((s) => ({

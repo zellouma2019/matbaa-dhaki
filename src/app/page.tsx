@@ -880,7 +880,7 @@ function ShopOverviewCard({ shop, onRefresh }: {
           <button className="border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium transition-colors inline-flex items-center gap-1.5" onClick={() => openInNewTab(`/s/${shop.slug}?admin=1`)}>
             <ExternalLink className="h-3.5 w-3.5" /> فتح الإدارة
           </button>
-          <button className="border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium transition-colors inline-flex items-center gap-1.5" onClick={() => openInNewTab(`/s/${shop.slug}`)}>
+          <button className="border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium transition-colors inline-flex items-center gap-1.5" onClick={() => openInNewTab(`/s/${shop.slug}?preview=1`)}>
             <Eye className="h-3.5 w-3.5" /> معاينة زبون
           </button>
         </div>

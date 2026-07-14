@@ -16,10 +16,9 @@ import type { PrintOrderLite } from "@/lib/order-types";
 interface RepeatOrderProps {
   /** عند اختيار طلب لإعادة تعبئته في المعالج */
   onRepeat: (order: PrintOrderLite) => void;
-  shopId?: string | null;
 }
 
-export function RepeatOrder({ onRepeat, shopId }: RepeatOrderProps) {
+export function RepeatOrder({ onRepeat }: RepeatOrderProps) {
   const [phone, setPhone] = useState("");
   const [orders, setOrders] = useState<PrintOrderLite[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +36,7 @@ export function RepeatOrder({ onRepeat, shopId }: RepeatOrderProps) {
     setLoading(true);
     setSearched(true);
     try {
-      const res = await fetch(`/api/orders/by-phone?phone=${encodeURIComponent(clean)}${shopId ? `&shopId=${shopId}` : ""}`);
+      const res = await fetch(`/api/orders/by-phone?phone=${encodeURIComponent(clean)}`);
       const d = await res.json();
       setOrders(d.orders || []);
       if ((d.orders || []).length === 0) {
@@ -114,7 +113,7 @@ export function RepeatOrder({ onRepeat, shopId }: RepeatOrderProps) {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-sm">
-              {orders.length === 1 ? "طلب سابق" : "طلبات سابقة"}
+              {orders.length} طلب سابق
             </h2>
             <span className="text-xs text-muted-foreground">اختر طلباً لتعديله وإرساله من جديد</span>
           </div>

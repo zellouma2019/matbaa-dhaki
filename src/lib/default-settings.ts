@@ -2,6 +2,20 @@
 import { SPEC_LIST } from "@/lib/service-specs";
 import { DELIVERY_OPTIONS } from "@/lib/print-config";
 
+export interface IntroSettings {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  emoji: string;
+  bgIcon: string; // أيقونة خلفية (lucide icon name أو emoji)
+  duration: number; // المدة بالميلي ثانية
+  footerText: string;
+  bgColor: string; // لون الخلفية
+  accentColor: string; // اللون المميز
+  showProgress: boolean;
+  showSpinningRing: boolean;
+}
+
 export interface AppSettings {
   services: typeof SPEC_LIST;
   deliveryOptions: typeof DELIVERY_OPTIONS;
@@ -18,6 +32,7 @@ export interface AppSettings {
     adminCode: string;
     autoDeleteDays: number;
   };
+  intro: IntroSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -35,5 +50,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
     workHours: "السبت - الخميس: 8:00 ص — 7:00 م",
     adminCode: "2514",
     autoDeleteDays: 10,
+  },
+  intro: {
+    enabled: true,
+    title: "مطبعة الذكي",
+    subtitle: "اطبع بسهولة — أسرع من واتساب",
+    emoji: "🖨️",
+    bgIcon: "Printer",
+    duration: 4200,
+    footerText: "🇩🇿 صُمّم بحب في الجزائر",
+    bgColor: "#1a1a1a",
+    accentColor: "#D4AF37",
+    showProgress: true,
+    showSpinningRing: true,
   },
 };

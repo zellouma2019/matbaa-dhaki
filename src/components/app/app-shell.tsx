@@ -1,76 +1,57 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useSyncExternalStore, useState } from "react";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import {
+  LayoutGrid,
   Plus,
   Printer,
-  BookOpen,
-  Scissors,
-  Palette,
-  Image,
-  Tag,
-  Layers,
-  PenTool,
   MapPin,
   Phone,
   Mail,
+  Clock,
   MessageCircle,
   RotateCcw,
   Search,
-  Sun,
-  Moon,
-  ChevronLeft,
-  type LucideIcon,
+  ChevronUp,
+  Info,
+  Store,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { NewOrderWizard } from "@/components/app/new-order-wizard";
 import { RepeatOrder } from "@/components/app/repeat-order";
 import { TrackOrder } from "@/components/app/track-order";
+import { AdminPanel } from "@/components/app/admin-panel";
 import { OrderSuccess } from "@/components/app/order-success";
+import { AdminGate } from "@/components/app/admin-gate";
 import { FloatingAssistant } from "@/components/app/floating-assistant";
+import { ThemeToggle } from "@/components/app/theme-toggle";
+import { Intro } from "@/components/app/intro";
+import { useAppStore, type CreatedOrder } from "@/lib/store";
 import { useShop } from "@/lib/shop-context";
-import type { FeatureKey } from "@/lib/shop-features";
-import { getTheme, type ShopTheme } from "@/lib/themes";
+import { getTheme } from "@/lib/themes";
 import type { PrintOrderLite } from "@/lib/order-types";
 
-const ICON_MAP: Record<string, LucideIcon> = {
-  Printer,
-  BookOpen,
-  Scissors,
-  Palette,
-  Image,
-  Tag,
-  Layers,
-  PenTool,
-};
-
-type View = "new" | "repeat" | "track";
-
-export interface CreatedOrder {
-  id: string;
-  reference: string;
-  serviceName: string;
-  total: number;
-  status: string;
-  estimatedHours: number;
-}
+type View = "new" | "repeat" | "track" | "admin";
 
 interface AppShellProps {
-  shopId?: string | null;
-  shopName?: string;
+  shopId: string;
+  shopName: string;
   shopPhone?: string | null;
   shopWhatsapp?: string | null;
   shopEmail?: string | null;
   shopAddress?: string | null;
   shopColor?: string | null;
-  shopThemeId?: number | null;
-  shopSlug?: string;
+  shopThemeId?: number;
+  shopSlug: string;
 }
+
+export { type CreatedOrder };
 
 export function AppShell({
   shopId,
-  shopName = "مطبعة الذكي",
+  shopName,
   shopPhone,
   shopWhatsapp,
   shopEmail,
@@ -79,472 +60,358 @@ export function AppShell({
   shopThemeId,
   shopSlug,
 }: AppShellProps) {
-  const { shop, hasFeature } = useShop();
-  const theme = getTheme(shopThemeId || shop?.themeId);
-  const searchParams = useSearchParams();
-  const initialTrackRef = searchParams.get("track");
-  const [view, setView] = useState<View>(initialTrackRef ? "track" : "new");
-  const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [prefillOrder, setPrefillOrder] = useState<PrintOrderLite | null>(null);
-  const [darkMode, setDarkMode] = useState(false);
-  const [trackInitialQuery] = useState<string | null>(initialTrackRef || null);
+  const [footerOpen, setFooterOpen] = useState(false);
+  const [showAdminNav, setShowAdminNav] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('preview') === '1';
+  });
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const { shop } = useShop();
+  const theme = getTheme(shopThemeId || 1, shopColor);
 
-  // الوضع الداكن
+  const {
+    view,
+    setView,
+    createdOrder,
+    setCreatedOrder,
+    prefillOrder,
+    setPrefillOrder,
+    adminUnlocked,
+    setAdminUnlocked,
+    adminGateOpen,
+    setAdminGateOpen,
+    refreshKey,
+    incrementRefresh,
+    showIntro,
+    setShowIntro,
+    setShopId,
+  } = useAppStore();
+
+  // تعيين shopId في المتجر عند التحميل
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [darkMode]);
+    setShopId(shopId);
+  }, [shopId, setShopId]);
+
+
 
   const handleCreated = useCallback((order: CreatedOrder) => {
     setCreatedOrder(order);
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    setRefreshKey((k) => k + 1);
-  }, []);
+  }, [setCreatedOrder]);
 
   const handleRepeat = useCallback((order: PrintOrderLite) => {
     setPrefillOrder(order);
     setView("new");
-  }, []);
+  }, [setPrefillOrder, setView]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillOrder(null);
-  }, []);
+  }, [setPrefillOrder]);
 
-  // أزرار التنقل
-  const navItems: { key: View; label: string; shortLabel: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { key: "new", label: "طلب جديد", shortLabel: "جديد", icon: Plus },
-    { key: "repeat", label: "تكرار طلب", shortLabel: "تكرار", icon: RotateCcw },
-    { key: "track", label: "تتبّع", shortLabel: "تتبّع", icon: Search },
+  const handleNavClick = useCallback(
+    (key: View) => {
+      if (key === "admin" && !adminUnlocked) {
+        setAdminGateOpen(true);
+        return;
+      }
+      if (key === "new") setFooterOpen(false);
+      setView(key);
+    },
+    [adminUnlocked, setAdminGateOpen, setView],
+  );
+
+  const handleAdminUnlock = useCallback(() => {
+    setAdminUnlocked(true);
+    setAdminGateOpen(false);
+    setView("admin");
+  }, [setAdminUnlocked, setAdminGateOpen, setView]);
+
+  const handleCloseOrderSuccess = useCallback(() => {
+    setCreatedOrder(null);
+    incrementRefresh();
+  }, [setCreatedOrder, incrementRefresh]);
+
+  // عناصر التنقل (الإدارة تظهر فقط في وضع المعاينة)
+  const navItems: { key: View; label: string; shortLabel: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
+    { key: "new", label: "طلب جديد", shortLabel: "جديد", icon: Plus, show: true },
+    { key: "repeat", label: "تكرار طلب", shortLabel: "تكرار", icon: RotateCcw, show: true },
+    { key: "track", label: "تتبّع", shortLabel: "تتبّع", icon: Search, show: true },
+    { key: "admin", label: "الإدارة", shortLabel: "إدارة", icon: LayoutGrid, show: showAdminNav },
   ];
+  const visibleNavItems = navItems.filter((i) => i.show);
 
-  const displayPhone = shopPhone || shopWhatsapp || "0560 00 00 00";
-  const whatsappNumber = shopWhatsapp || shopPhone || "0560000000";
+  const displayPhone = shopPhone || "0560 00 00 00";
+  const displayWhatsapp = shopWhatsapp || shopPhone || "0560000000";
 
-  return (
-    <div
-      data-app-shell
-      className="min-h-screen flex flex-col"
-      dir="rtl"
-      style={{
-        backgroundColor: theme.contentBg,
-        "--theme-top-bar-bg": theme.topBar.bg,
-        "--theme-top-bar-text": theme.topBar.text,
-        "--theme-top-bar-accent": theme.topBar.accent,
-        "--theme-header-bg": theme.header.bg,
-        "--theme-header-text": theme.header.text,
-        "--theme-header-border": theme.header.border,
-        "--theme-nav-active": theme.nav.active,
-        "--theme-nav-active-text": theme.nav.activeText,
-        "--theme-nav-hover": theme.nav.hover,
-        "--theme-accent": theme.accent,
-        "--theme-footer-bg": theme.footer.bg,
-        "--theme-footer-text": theme.footer.text,
-        "--theme-footer-border": theme.footer.border,
-        "--theme-footer-link-hover": theme.footer.linkHover,
-        "--theme-footer-icon": theme.footerIcon,
-        "--theme-card-hover-bg": theme.card.hoverBg,
-        "--theme-logo-icon-color": theme.logoIconColor,
-      } as React.CSSProperties}
-    >
-      {/* ===== الشريط العلوي ===== */}
-      <div style={{ backgroundColor: theme.topBar.bg }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-9 sm:h-10 flex items-center justify-between gap-3">
-          <div
-            className="flex sm:hidden items-center gap-2 text-xs min-w-0"
-            style={{ color: theme.topBar.text }}
-          >
-            <span style={{ color: theme.topBar.accent }}>⚡</span>
-            <span className="truncate font-medium">اطلب خلال دقيقة</span>
-          </div>
-          <div
-            className="hidden sm:flex items-center gap-5 md:gap-8 overflow-hidden text-xs"
-            style={{ color: theme.topBar.text }}
-          >
-            <span className="flex items-center gap-2 whitespace-nowrap font-medium">
-              <span style={{ color: theme.topBar.accent }}>⚡</span>
-              اطلب خلال دقيقة
-            </span>
-            <span className="hidden md:flex items-center gap-2 whitespace-nowrap font-medium">
-              <span style={{ color: theme.topBar.accent }}>🕐</span>
-              جاهز خلال ساعة
-            </span>
-          </div>
-          <a
-            href={`tel:${displayPhone.replace(/\s/g, "")}`}
-            className="top-bar-link flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition-all duration-200 active:scale-[0.98] whitespace-nowrap shrink-0 text-xs font-medium"
-            style={{ color: theme.topBar.text }}
-          >
-            <Phone className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">{displayPhone}</span>
-            <span className="sm:hidden">اتصل بنا</span>
-          </a>
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-9 h-9 rounded-xl bg-neutral-900 flex items-center justify-center animate-pulse">
+          <Printer className="h-5 w-5 text-amber-400" />
         </div>
       </div>
+    );
+  }
+
+  return (
+    <>
+    {showIntro && <Intro onFinish={() => setShowIntro(false)} />}
+    <LayoutGroup>
+      <div className="min-h-screen flex flex-col bg-background" dir="rtl" style={theme.rootVars as React.CSSProperties}>
+      {/* ===== الشريط العلوي ===== */}
+      {view !== "new" && (
+      <div className="bg-neutral-900 text-neutral-200">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-8 sm:h-9 flex items-center justify-between gap-2">
+          <div className="flex sm:hidden items-center gap-1.5 text-xs min-w-0">
+            <span className="text-amber-400 shrink-0">⚡</span>
+            <span className="truncate">اطلب خلال دقيقة</span>
+          </div>
+          <div className="hidden sm:flex items-center gap-4 md:gap-6 overflow-hidden text-xs">
+            <span className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="text-amber-400">⚡</span> اطلب خلال دقيقة
+            </span>
+            <span className="hidden md:flex items-center gap-1.5 whitespace-nowrap">
+              <span className="text-amber-400">🕐</span> جاهز خلال ساعة
+            </span>
+            <span className="hidden lg:flex items-center gap-1.5 whitespace-nowrap">
+              <span className="text-amber-400">🔔</span> إشعار عند الجاهزية
+            </span>
+          </div>
+          {displayPhone && (
+            <a
+              href={`tel:${displayPhone.replace(/\s/g, "")}`}
+              className="flex items-center gap-1 hover:text-white transition-colors whitespace-nowrap shrink-0 text-xs"
+            >
+              <Phone className="h-3 w-3 shrink-0" />
+              <span className="hidden sm:inline">{displayPhone}</span>
+              <span className="sm:hidden">اتصل بنا</span>
+            </a>
+          )}
+        </div>
+      </div>
+      )}
 
       {/* ===== الترويسة ===== */}
-      <header
-        className="shadow-sm sticky top-0 z-40 no-print"
-        style={{ backgroundColor: theme.header.bg }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 md:h-16 flex items-center justify-between gap-3">
-          {/* الشعار */}
+      <header className="bg-white border-b border-border sticky top-0 z-40 no-print">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 md:h-16 flex items-center justify-between gap-2">
           <button
-            onClick={() => setView("new")}
-            className="flex items-center gap-3 shrink-0 min-w-0 transition-all duration-200 active:scale-[0.98]"
+            onClick={() => { setFooterOpen(false); setView("new"); }}
+            className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0"
           >
-            {shop?.logoUrl ? (
-              <div
-                className={`w-10 h-10 md:w-11 md:h-11 ${theme.logoStyle} overflow-hidden shadow-sm shrink-0 ring-1 ring-black/5`}
-              >
-                <img
-                  src={shop.logoUrl}
-                  alt={shopName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : (() => {
-              const IconComp = ICON_MAP[shop?.logoIcon || "Printer"] || Printer;
-              return (
-                <div
-                  className={`w-10 h-10 md:w-11 md:h-11 ${theme.logoStyle} flex items-center justify-center shrink-0 shadow-sm`}
-                  style={{ backgroundColor: shopColor || theme.logoIconColor }}
-                >
-                  <IconComp className="h-5 w-5 md:h-5.5 md:w-5.5 text-white" />
-                </div>
-              );
-            })()}
+            <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-neutral-900 flex items-center justify-center shrink-0">
+              <Printer className="h-4 w-4 md:h-5 md:w-5 text-amber-400" />
+            </div>
             <div className="text-right min-w-0">
-              <div
-                className="font-bold text-sm md:text-base leading-tight truncate"
-                style={{ color: theme.header.text }}
-              >
-                {shopName}
-              </div>
-              <div
-                className="text-xs leading-tight truncate mt-0.5 header-subtitle"
-              >
+              <div className="font-bold text-sm md:text-base leading-tight truncate">{shopName}</div>
+              <div className="text-xs text-muted-foreground leading-tight truncate">
                 <span className="sm:hidden">اطبع بسهولة</span>
                 <span className="hidden sm:inline">اطبع بسهولة — أسرع من واتساب</span>
               </div>
             </div>
           </button>
 
-          {/* أزرار الهيدر + التنقل حاسوب */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* زر الوضع الداكن */}
-            {hasFeature("darkMode") && (
-              <button
-                onClick={() => setDarkMode((d) => !d)}
-                className="w-11 h-11 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all duration-200 active:scale-[0.95]"
-                aria-label={darkMode ? "الوضع الفاتح" : "الوضع الداكن"}
-              >
-                {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
-            )}
-
-            {/* فاصل */}
-            <div
-              className="w-px h-6 hidden sm:block"
-              style={{ backgroundColor: theme.header.border }}
-            />
-
-            {/* التنقل - حاسوب */}
-            <nav
-              className="hidden md:flex items-center gap-1 rounded-2xl p-1"
-              style={{ backgroundColor: "color-mix(in srgb, var(--theme-header-border) 30%, white)" }}
-            >
-              {navItems.map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => setView(item.key)}
-                  className={`nav-pill flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[0.98] ${
-                    view === item.key
-                      ? "nav-pill-active"
-                      : "nav-pill-inactive"
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          {/* التنقل - الجوال */}
-          <nav
-            className="flex md:hidden items-center gap-1 rounded-2xl p-1 shrink-0"
-            style={{ backgroundColor: "color-mix(in srgb, var(--theme-header-border) 30%, white)" }}
-          >
-            {navItems.map((item) => (
+          {/* التنقل - حاسوب */}
+          <nav className="hidden md:flex items-center gap-1 bg-muted/60 rounded-full p-1">
+            {visibleNavItems.map((item) => (
               <button
                 key={item.key}
-                onClick={() => setView(item.key)}
-                className={`nav-pill flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 active:scale-[0.95] ${
-                  view === item.key
-                    ? "nav-pill-active"
-                    : "nav-pill-inactive"
+                onClick={() => handleNavClick(item.key)}
+                className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  view === item.key ? "text-white" : "text-foreground hover:bg-background"
                 }`}
-                aria-label={item.label}
               >
-                <item.icon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{item.shortLabel}</span>
+                {view === item.key && (
+                  <motion.div
+                    layoutId="nav-active-desktop"
+                    className="absolute inset-0 bg-neutral-900 rounded-full shadow-sm"
+                    style={{ zIndex: -1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <item.icon className="h-4 w-4 relative z-10" />
+                <span className="relative z-10">{item.label}</span>
+                {item.key === "admin" && !adminUnlocked && (
+                  <svg className="h-3 w-3 text-amber-500 relative z-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                )}
               </button>
             ))}
           </nav>
+
+          {/* التنقل - الجوال */}
+          <nav className="flex md:hidden items-center gap-1 bg-muted/60 rounded-full p-1 shrink-0">
+            {visibleNavItems.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => handleNavClick(item.key)}
+                className={`relative flex items-center justify-center w-8 h-8 rounded-full transition-colors ${
+                  view === item.key ? "text-white" : "text-foreground hover:bg-background"
+                }`}
+                aria-label={item.label}
+              >
+                {view === item.key && (
+                  <motion.div
+                    layoutId="nav-active-mobile"
+                    className="absolute inset-0 bg-neutral-900 rounded-full"
+                    style={{ zIndex: -1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <item.icon className="h-4 w-4 relative z-10" />
+                {item.key === "admin" && !adminUnlocked && (
+                  <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                )}
+              </button>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
       {/* ===== المحتوى ===== */}
       <main className="flex-1 flex flex-col">
-        <div className="flex-1 py-6 md:py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full">
-            {view === "new" && (
-              <NewOrderWizard
-                onCreated={handleCreated}
-                prefillOrder={prefillOrder}
-                onPrefillConsumed={handlePrefillConsumed}
-                shopId={shopId}
-              />
-            )}
-            {view === "repeat" && (
-              <RepeatOrder onRepeat={handleRepeat} shopId={shopId} />
-            )}
-            {view === "track" && <TrackOrder key={refreshKey} shopId={shopId} initialQuery={trackInitialQuery} />}
+        <div className="flex-1 py-4 md:py-8">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 w-full">
+            <AnimatePresence mode="wait">
+              {view === "new" && (
+                <motion.div key="view-new" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25, ease: "easeInOut" }}>
+                  <NewOrderWizard onCreated={handleCreated} prefillOrder={prefillOrder} onPrefillConsumed={handlePrefillConsumed} />
+                </motion.div>
+              )}
+              {view === "repeat" && (
+                <motion.div key="view-repeat" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25, ease: "easeInOut" }}>
+                  <RepeatOrder onRepeat={handleRepeat} />
+                </motion.div>
+              )}
+              {view === "track" && (
+                <motion.div key="view-track" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25, ease: "easeInOut" }}>
+                  <TrackOrder key={refreshKey} />
+                </motion.div>
+              )}
+              {view === "admin" && (
+                <motion.div key="view-admin" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25, ease: "easeInOut" }}>
+                  <AdminPanel key={refreshKey} onRefresh={incrementRefresh} />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
         {/* ===== التذييل ===== */}
-        <footer
-          className="mt-auto no-print"
-          style={{
-            backgroundColor: theme.footer.bg,
-            borderTop: `1px solid ${theme.footer.border}`,
-          }}
-        >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-12">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
-              {/* العمود الأول: الشعار والوصف */}
-              <div>
-                <div className="flex items-center gap-3 mb-4">
-                  {shop?.logoUrl ? (
-                    <div
-                      className={`w-10 h-10 ${theme.logoStyle} overflow-hidden shadow-sm ring-1 ring-white/10`}
-                    >
-                      <img src={shop.logoUrl} alt={shopName} className="w-full h-full object-cover" />
+        {view !== "admin" && (
+        <footer className="bg-neutral-900 text-neutral-300 mt-auto no-print">
+          <button
+            onClick={() => setFooterOpen(!footerOpen)}
+            className="md:hidden w-full flex items-center justify-center gap-2 py-3.5 px-4 text-xs text-neutral-400 hover:text-amber-400 transition-colors border-b border-neutral-800/60 active:bg-neutral-800/50"
+            aria-expanded={footerOpen}
+            aria-label={footerOpen ? "إخفاء التفاصيل" : "عرض التفاصيل"}
+          >
+            <Info className="h-3.5 w-3.5" />
+            <span className="font-medium">{footerOpen ? "إخفاء التفاصيل" : `عرض معلومات ${shopName}`}</span>
+            <motion.div animate={{ rotate: footerOpen ? 180 : 0 }} transition={{ duration: 0.3, ease: "easeInOut" }}>
+              <ChevronUp className="h-4 w-4" />
+            </motion.div>
+          </button>
+
+          <div className="footer-collapse" style={footerOpen ? { maxHeight: "2000px" } : undefined}>
+            <div className="max-w-7xl mx-auto px-4 py-10">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div className="md:col-span-1">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-400 flex items-center justify-center">
+                      <Store className="h-5 w-5 text-neutral-900" />
                     </div>
-                  ) : (() => {
-                    const FIconComp = ICON_MAP[shop?.logoIcon || "Printer"] || Printer;
-                    return (
-                      <div
-                        className={`w-10 h-10 ${theme.logoStyle} flex items-center justify-center shadow-sm`}
-                        style={{ backgroundColor: shopColor || theme.logoIconColor }}
-                      >
-                        <FIconComp className="h-5 w-5 text-white" />
-                      </div>
-                    );
-                  })()}
-                  <div>
-                    <div className="font-bold text-sm text-white">{shopName}</div>
-                    <div className="text-xs" style={{ color: theme.footer.text }}>
-                      اطبع بسهولة
+                    <div>
+                      <div className="font-bold text-white">{shopName}</div>
+                      <div className="text-xs text-neutral-400">اطبع بسهولة</div>
                     </div>
                   </div>
+                  <p className="text-xs text-neutral-400 leading-relaxed">
+                    خدمة طباعة احترافية وسريعة. اطبع مستنداتك وصورك وبطاقاتك أونلاين وتابع طلبك لحظة بلحظة.
+                  </p>
                 </div>
-                <p className="text-xs leading-relaxed" style={{ color: theme.footer.text }}>
-                  خدمة طباعة احترافية وسريعة. اطبع مستنداتك وصورك وبطاقاتك
-                  أونلاين وتابع طلبك لحظة بلحظة.
-                </p>
-              </div>
 
-              {/* العمود الثاني: روابط سريعة */}
-              <div>
-                <h4 className="font-semibold text-sm text-white mb-4">روابط سريعة</h4>
-                <div className="space-y-2">
-                  {[
-                    { label: "طلب طباعة جديد", viewKey: "new" as View },
-                    { label: "تتبّع طلب", viewKey: "track" as View },
-                    { label: "إعادة طلب سابق", viewKey: "repeat" as View },
-                  ].map((link) => (
-                    <button
-                      key={link.viewKey}
-                      onClick={() => setView(link.viewKey)}
-                      className="footer-quick-link flex items-center justify-between w-full px-4 py-3 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98]"
-                      style={{ backgroundColor: theme.card.hoverBg }}
-                    >
-                      <span
-                        className="footer-link-text text-sm font-medium transition-colors"
-                        style={{ color: theme.header.text }}
-                      >
-                        {link.label}
-                      </span>
-                      <ChevronLeft
-                        className="footer-chevron h-4 w-4 transition-all duration-200"
-                        style={{ color: theme.footer.text }}
-                      />
-                    </button>
-                  ))}
+                <div>
+                  <h4 className="text-white font-semibold text-sm mb-3">روابط سريعة</h4>
+                  <ul className="space-y-2 text-xs">
+                    <li><button onClick={() => { setFooterOpen(false); setView("new"); }} className="hover:text-amber-400 transition-colors">طلب طباعة جديد</button></li>
+                    <li><button onClick={() => setView("track")} className="hover:text-amber-400 transition-colors">تتبّع طلب</button></li>
+                    {showAdminNav && (
+                      <li><button onClick={() => handleNavClick("admin")} className="hover:text-amber-400 transition-colors">لوحة الإدارة</button></li>
+                    )}
+                    <li><button onClick={() => setView("repeat")} className="hover:text-amber-400 transition-colors">إعادة طلب سابق</button></li>
+                  </ul>
                 </div>
-              </div>
 
-              {/* العمود الثالث: تواصل معنا */}
-              <div>
-                <h4 className="font-semibold text-sm text-white mb-4">تواصل معنا</h4>
-                <div className="space-y-2.5">
-                  {shopAddress && (
-                    <div
-                      className="flex items-center gap-3 p-3 rounded-xl shadow-sm transition-all duration-200 hover:shadow-md"
-                      style={{ backgroundColor: theme.card.hoverBg }}
-                    >
-                      <div className="footer-icon-box w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
-                        <MapPin className="h-4 w-4" />
+                <div>
+                  <h4 className="text-white font-semibold text-sm mb-3">خدماتنا</h4>
+                  <ul className="space-y-2 text-xs text-neutral-400">
+                    <li>🖨️ طباعة مستند</li>
+                    <li>📄 نسخ مستندات</li>
+                    <li>🖼️ طباعة صور</li>
+                    <li>📚 تجليد</li>
+                    <li>🪪 بطاقات</li>
+                    <li>📜 ملصقات</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h4 className="text-white font-semibold text-sm mb-3">تواصل معنا</h4>
+                  <ul className="space-y-3 text-xs">
+                    {shopAddress && (
+                      <li className="flex items-start gap-2">
+                        <MapPin className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>{shopAddress}</span>
+                      </li>
+                    )}
+                    {displayPhone && (
+                      <li className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-amber-400" />
+                        <span>{displayPhone}</span>
+                      </li>
+                    )}
+                    {displayWhatsapp && (
+                      <li className="flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4 text-amber-400" />
+                        <span>واتساب</span>
+                      </li>
+                    )}
+                    {shopEmail && (
+                      <li className="flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-amber-400" />
+                        <span>{shopEmail}</span>
+                      </li>
+                    )}
+                    <li className="flex items-start gap-2 pt-2 border-t border-neutral-700">
+                      <Clock className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div>السبت - الخميس: 8:00 ص — 7:00 م</div>
+                        <div className="text-neutral-500">الجمعة: مغلق</div>
                       </div>
-                      <span className="text-sm leading-relaxed" style={{ color: theme.header.text }}>
-                        {shopAddress}
-                      </span>
-                    </div>
-                  )}
-                  {displayPhone && (
-                    <a
-                      href={`tel:${displayPhone.replace(/\s/g, "")}`}
-                      className="flex items-center gap-3 p-3 rounded-xl shadow-sm transition-all duration-200 hover:shadow-md active:scale-[0.98]"
-                      style={{ backgroundColor: theme.card.hoverBg }}
-                    >
-                      <div className="footer-icon-box w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
-                        <Phone className="h-4 w-4" />
-                      </div>
-                      <span className="text-sm" style={{ color: theme.header.text }}>
-                        {displayPhone}
-                      </span>
-                    </a>
-                  )}
-                  {shopWhatsapp && (
-                    <a
-                      href={(() => {
-                        const digits = whatsappNumber.replace(/\D/g, "");
-                        const raw = digits.startsWith("0") ? digits.substring(1) : digits;
-                        const phone = raw.startsWith("213") ? raw : `213${raw}`;
-                        return `https://wa.me/${phone}`;
-                      })()}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-3 rounded-xl shadow-sm transition-all duration-200 hover:shadow-md active:scale-[0.98]"
-                      style={{ backgroundColor: theme.card.hoverBg }}
-                    >
-                      <div className="footer-icon-box w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
-                        <MessageCircle className="h-4 w-4" />
-                      </div>
-                      <span className="text-sm" style={{ color: theme.header.text }}>
-                        واتساب
-                      </span>
-                    </a>
-                  )}
-                  {shopEmail && (
-                    <a
-                      href={`mailto:${shopEmail}`}
-                      className="flex items-center gap-3 p-3 rounded-xl shadow-sm transition-all duration-200 hover:shadow-md active:scale-[0.98]"
-                      style={{ backgroundColor: theme.card.hoverBg }}
-                    >
-                      <div className="footer-icon-box w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
-                        <Mail className="h-4 w-4" />
-                      </div>
-                      <span className="text-sm" style={{ color: theme.header.text }}>
-                        {shopEmail}
-                      </span>
-                    </a>
-                  )}
+                    </li>
+                  </ul>
                 </div>
               </div>
-            </div>
-
-            {/* حقوق النشر */}
-            <div
-              className="mt-10 pt-6 text-center"
-              style={{ borderTop: `1px solid ${theme.footer.border}` }}
-            >
-              <div className="text-xs" style={{ color: theme.footer.text }}>
+              <div className="mt-8 pt-6 border-t border-neutral-800 text-center text-xs text-neutral-500">
                 © {new Date().getFullYear()} {shopName} — جميع الحقوق محفوظة
               </div>
             </div>
           </div>
         </footer>
+        )}
       </main>
 
-      {/* نافذة نجاح الطلب */}
-      <OrderSuccess
-        order={createdOrder}
-        open={!!createdOrder}
-        onClose={() => {
-          setCreatedOrder(null);
-          handleRefresh();
-        }}
-        onNavigate={(v) => setView(v as View)}
-        shopName={shopName}
-        shopId={shopId}
-      />
-
-      {/* الزر العائم */}
-      <FloatingAssistant
-        onRepeatOrder={() => setView("repeat")}
-        whatsappNumber={whatsappNumber}
-        shopName={shopName}
-        theme={theme}
-      />
-
+      <OrderSuccess order={createdOrder} open={!!createdOrder} onClose={handleCloseOrderSuccess} onNavigate={(v) => { if (v === "new") setFooterOpen(false); setView(v as View); }} />
+      <AdminGate open={adminGateOpen} onClose={() => setAdminGateOpen(false)} onSuccess={handleAdminUnlock} />
+      <FloatingAssistant onRepeatOrder={() => setView("repeat")} />
       <SonnerToaster position="top-center" dir="rtl" />
-
-      {/* أنماط القالب + الوضع الداكن */}
-      <style>{`
-        /* ---- Top bar hover ---- */
-        [data-app-shell] .top-bar-link:hover {
-          background-color: rgba(255, 255, 255, 0.08);
-        }
-
-        /* ---- Header subtitle (muted text) ---- */
-        [data-app-shell] .header-subtitle {
-          color: color-mix(in srgb, var(--theme-header-text) 45%, transparent);
-        }
-
-        /* ---- Nav pills ---- */
-        [data-app-shell] .nav-pill-active {
-          background-color: var(--theme-nav-active) !important;
-          color: var(--theme-nav-active-text) !important;
-          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        }
-        [data-app-shell] .nav-pill-inactive {
-          color: color-mix(in srgb, var(--theme-header-text) 50%, transparent);
-        }
-        [data-app-shell] .nav-pill-inactive:hover {
-          background-color: var(--theme-nav-hover);
-          color: var(--theme-header-text);
-          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        }
-
-        /* ---- Footer quick-link chevron hover ---- */
-        [data-app-shell] .footer-quick-link:hover .footer-chevron {
-          color: var(--theme-footer-link-hover) !important;
-          transform: translateX(-2px);
-        }
-
-        /* ---- Footer icon boxes (tinted accent) ---- */
-        [data-app-shell] .footer-icon-box {
-          background-color: color-mix(in srgb, var(--theme-accent) 12%, white);
-          color: var(--theme-accent);
-        }
-
-        /* ---- Dark mode (separate feature) ---- */
-        html.dark body, html.dark {
-          filter: invert(1) hue-rotate(180deg);
-        }
-        html.dark img, html.dark video, html.dark canvas {
-          filter: invert(1) hue-rotate(180deg);
-        }
-      `}</style>
-    </div>
+      </div>
+    </LayoutGroup>
+    </>
   );
 }

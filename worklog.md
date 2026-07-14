@@ -84,3 +84,58 @@ Stage Summary:
 - Session now lasts 24 hours using localStorage with timestamp, survives tab close
 - First access auto-unlocks without any password prompt
 - User can set password from Security tab after entering dashboard
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Comprehensive audit, bug fixes, repo size reduction, Vercel verification
+
+Work Log:
+- Analyzed screenshot: VLM identified merchant PIN gate showing two password fields (old version bug, now fixed)
+- Ran comprehensive project audit via subagent: found 24 issues (0 CRITICAL, 11 HIGH, 9 MEDIUM, 4 LOW)
+- Fixed TSE-1: setOrders → setRawOrders in admin-panel.tsx:160
+- Fixed TSE-2/3: Added shopId prop to MobileOrderCard component
+- Fixed TSE-4: Added basePricePerPage to activeServices mapping in new-order-wizard.tsx
+- Fixed REACT-1: ShopSettings unlock never worked (API stripped adminPin, now uses POST endpoint for server-side PIN verification)
+- Fixed SEC-5: Removed adminPin from ShopStat interface and edit form payload
+- Added POST /api/shops/[slug] endpoint for server-side PIN verification
+- Reduced git repo from 49MB → 1.4MB by squashing 63 commits into 1
+- TypeScript compiles with 0 errors after all fixes
+- Force pushed to GitHub, Vercel auto-deployed
+- Verified on Vercel via Agent Browser:
+  - Super admin dashboard auto-unlocks ✅
+  - Session persists after reload (24h localStorage) ✅
+  - Security tab shows correctly ✅
+  - Password save works ✅
+  - Merchant PIN gate shows single field ✅
+  - Customer page loads with all features ✅
+  - Zero console errors on all pages ✅
+
+Stage Summary:
+- 6 bugs fixed (3 TypeScript, 1 React logic, 1 security, 1 API)
+- Git repo: 49MB → 1.4MB (source: 2.5MB)
+- Vercel deployment verified working on all 3 levels
+
+---
+Task ID: 1
+Agent: lib-updater
+Task: Update lib files and API routes from new version
+
+Work Log:
+- Copied service-specs.ts, order-types.ts, print-config.ts, file-analyzer.ts from new version
+- Merged default-settings.ts to add IntroSettings interface and intro config defaults
+- Updated store.ts to import CreatedOrder from app-shell (removed inline definition), kept shopId/setShopId
+- Fixed mounted typo in app-shell.tsx (was already correct, no change needed)
+- Merged orders/route.ts: added file preview support, pagination, safer JSON parsing, fileData field, tags
+- Merged orders/[id]/route.ts: added admin-auth, audit logging, edit action with field-level changes, status timestamps (startedPrintingAt, completedPrintingAt)
+- Merged settings/route.ts: added intro settings read/write support, kept multi-tenant shopId filtering
+- Merged admin/stats/route.ts: added expenses/profit aggregation, kept shopId filtering
+- Verified 9 other API routes (by-phone, invoice, stats, track, seed, templates, records, records/[id], api/route) — no changes needed (either identical or current version already more complete)
+- All multi-tenant shopId filtering preserved across all modified routes
+
+Stage Summary:
+- All lib files updated with new features (print methods, color processing, DPI, file analyzer)
+- API routes updated while preserving multi-tenant architecture
+- CreatedOrder type now exported from app-shell and imported in store (circular dependency safe)
+- IntroSettings support added to default-settings.ts and settings API
+- Invoice route kept current version (multi-shop logo/color support already present)

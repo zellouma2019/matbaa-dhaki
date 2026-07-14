@@ -404,7 +404,8 @@ export function estimateDeliveryHours(deliveryMode: string, pages: number, copie
 }
 
 
-export function formatDA(n: number): string {
+export function formatDA(n: number | undefined | null): string {
+  if (n == null || isNaN(n)) return "0 دج";
   return `${n.toLocaleString("en-US")} دج`;
 }
 

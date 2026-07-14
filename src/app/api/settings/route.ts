@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
         if (row.key === "services") settings.services = parsed;
         else if (row.key === "deliveryOptions") settings.deliveryOptions = parsed;
         else if (row.key === "general") settings.general = { ...settings.general, ...parsed };
+        else if (row.key === "intro") settings.intro = { ...settings.intro, ...parsed };
       } catch {}
     }
     return NextResponse.json(settings);
@@ -51,7 +52,7 @@ export async function PUT(req: NextRequest) {
   if (!rl.ok) return rl.response;
   try {
     const body = await req.json();
-    const { services, deliveryOptions, general, shopId } = body as AppSettings & { shopId?: string };
+    const { services, deliveryOptions, general, intro, shopId } = body as AppSettings & { shopId?: string };
 
     const updates: Promise<unknown>[] = [];
     if (services) {
@@ -62,6 +63,9 @@ export async function PUT(req: NextRequest) {
     }
     if (general) {
       updates.push(upsertSetting("general", JSON.stringify(general), shopId));
+    }
+    if (intro) {
+      updates.push(upsertSetting("intro", JSON.stringify(intro), shopId));
     }
     await Promise.all(updates);
     return NextResponse.json({ success: true });
