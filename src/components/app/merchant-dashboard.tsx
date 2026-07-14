@@ -37,7 +37,10 @@ import {
   Trash2,
   CheckSquare,
   Check,
+  CheckCircle2,
   LayoutGrid, Menu,
+  Tag,
+  StickyNote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -1842,6 +1845,55 @@ function MobileOrderCard({
               <div className="flex items-center gap-2 rounded-xl bg-white shadow-sm border border-slate-200/60 p-2.5">
                 <FileText className="h-4 w-4 text-violet-500 shrink-0" />
                 <span className="text-xs truncate text-slate-700">{order.fileName}</span>
+              </div>
+            </div>
+          )}
+
+          {/* وسوم الطلب */}
+          {order.tags && order.tags.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-slate-700 mb-2">الوسوم</div>
+              <div className="flex flex-wrap gap-1.5">
+                {order.tags.map((tag, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200/60">
+                    <Tag className="h-2.5 w-2.5" />
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ملاحظات الإدارة */}
+          {order.adminNotes && (
+            <div>
+              <div className="text-xs font-bold text-slate-700 mb-2">ملاحظات داخلية</div>
+              <div className="rounded-xl bg-amber-50 border border-amber-200/60 p-2.5">
+                <div className="flex items-start gap-1.5">
+                  <StickyNote className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="text-xs text-amber-800">{order.adminNotes}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* تواريخ الطباعة */}
+          {(order.startedPrintingAt || order.completedPrintingAt) && (
+            <div>
+              <div className="text-xs font-bold text-slate-700 mb-2">مراحل الطباعة</div>
+              <div className="space-y-1.5">
+                {order.startedPrintingAt && (
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <PrinterIcon className="h-3.5 w-3.5 text-blue-500" />
+                    <span>بدأ: {formatDateTimeAr(order.startedPrintingAt)}</span>
+                  </div>
+                )}
+                {order.completedPrintingAt && (
+                  <div className="flex items-center gap-2 text-xs text-emerald-600">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>انتهى: {formatDateTimeAr(order.completedPrintingAt)}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -1,5 +1,4 @@
 // محلل الملفات الحقيقي - يحلل محتوى الملف الفعلي而非 معلومات وهمية
-/* eslint-disable @typescript-eslint/no-this-alias, @typescript-eslint/no-require-imports */
 "use client";
 
 import type { ServiceType } from "@/lib/print-config";
