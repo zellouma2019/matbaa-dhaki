@@ -61,15 +61,18 @@ export function AppShell({
   shopSlug,
 }: AppShellProps) {
   const [footerOpen, setFooterOpen] = useState(false);
-  const [showAdminNav, setShowAdminNav] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return new URLSearchParams(window.location.search).get('preview') === '1';
-  });
+  const [showAdminNav, setShowAdminNav] = useState(false);
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
     () => false,
   );
+
+  // قراءة وضع المعاينة من URL بعد التحميل
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('preview') === '1') setShowAdminNav(true);
+  }, []);
   const { shop } = useShop();
   const theme = getTheme(shopThemeId || 1, shopColor);
 
