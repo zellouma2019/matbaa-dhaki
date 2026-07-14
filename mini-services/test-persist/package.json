@@ -1,0 +1,6 @@
+{
+  "name": "test-persist",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  }
+}

@@ -1,0 +1,65 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# testing
+coverage/
+
+# next.js
+.next/
+out/
+dist/
+
+# production
+build/
+standalone/
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (never commit secrets)
+.env
+.env*.local
+.env.production
+.env.staging
+
+# vercel
+.vercel
+
+# prisma
+db/
+*.db
+*.db-journal
+
+# uploads
+upload/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# temp / tool results
+tool-results/
+.zscripts/
+
+# skills
+skills/
+
+# dev logs
+dev.log
+*.log
+
+# extracted examples
+upload/extracted-project/

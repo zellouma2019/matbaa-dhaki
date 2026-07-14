@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- White background -->
+  <rect width="32" height="32" rx="4" fill="#ffffff"/>
+  <!-- Printer body -->
+  <rect x="6" y="11" width="20" height="12" rx="2" fill="#d4af37"/>
+  <!-- Paper tray (top) -->
+  <rect x="10" y="5" width="12" height="8" rx="1" fill="#f5f0e0" stroke="#d4af37" stroke-width="1.2"/>
+  <!-- Paper line on top tray -->
+  <line x1="12" y1="8" x2="20" y2="8" stroke="#d4af37" stroke-width="0.8" stroke-linecap="round"/>
+  <line x1="12" y1="10" x2="18" y2="10" stroke="#d4af37" stroke-width="0.8" stroke-linecap="round"/>
+  <!-- Output paper (bottom) -->
+  <rect x="10" y="19" width="12" height="8" rx="1" fill="#f5f0e0" stroke="#d4af37" stroke-width="1.2"/>
+  <!-- Paper lines on output -->
+  <line x1="12" y1="22" x2="20" y2="22" stroke="#d4af37" stroke-width="0.8" stroke-linecap="round"/>
+  <line x1="12" y1="24" x2="18" y2="24" stroke="#d4af37" stroke-width="0.8" stroke-linecap="round"/>
+  <!-- Status light -->
+  <circle cx="23" cy="14" r="1.2" fill="#ffffff" opacity="0.8"/>
+</svg>

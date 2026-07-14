@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// متجر (تاجر) — كل تاجر له متجر مستقل
+model Shop {
+  id             String       @id @default(cuid())
+  /// معرّف فريد يُستخدم في الرابط مثل matbaa-alnoor
+  slug           String       @unique
+  /// اسم المتجر الظاهر للزبائن
+  name           String
+  /// كلمة مرور لوحة الإدارة
+  adminPin       String
+  /// بيانات الاتصال
+  phone          String?
+  whatsapp       String?
+  email          String?
+  address        String?
+  /// رابط الشعار (اختياري) — base64 أو URL
+  logoUrl        String?
+  /// أيقونة الشعار الافتراضية (Printer, BookOpen, Scissors, ...)
+  logoIcon       String      @default("Printer")
+  /// اللون الرئيسي (اختياري) مثل #d4af37
+  primaryColor   String?
+  /// معرّف القالب اللوني (1-8)
+  themeId        Int          @default(1)
+  /// إعدادات مخصصة JSON: { services, pricing, delivery, general }
+  settings       String?
+  /// اسم صاحب المتجر
+  ownerName      String?
+  /// هاتف صاحب المتجر
+  ownerPhone     String?
+  /// هل المتجر نشط؟
+  isActive       Boolean      @default(true)
+  /// نوع الخطة: free أو paid
+  plan           String      @default("free")
+  /// الميزات المفعّلة JSON: { whatsappNotifications: true, ... }
+  features       String?
+  /// مدة التجربة بالأيام (null = بلا حدود)
+  trialDays      Int?
+  /// تاريخ بدء التجربة
+  trialStartsAt  DateTime?
+  /// ملاحظات المالك عن التاجر
+  ownerNotes     String?
+  /// معلومات الدفع
+  paymentInfo    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  orders         PrintOrder[]
+  shopSettings   Setting[]    @relation("ShopSettings")
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+/// طلب طباعة
+model PrintOrder {
+  id             String    @id @default(cuid())
+  /// رقم المعاملة مثل A-1050
+  reference      String    @unique
+  /// نوع الخدمة: document, photo, binding, copy, card, poster
+  serviceType    String
+  serviceName    String
+  /// اسم الملف (محاكاة - لا رفع فعلي)
+  fileName       String?
+  fileType       String?
+  fileSize       Int?
+  /// تحليل ذكي JSON
+  smartAnalysis  String?
+  /// خيارات الطباعة JSON
+  options        String
+  /// بيانات العميل JSON
+  customer       String
+  /// وقت التسليم JSON
+  delivery       String
+  /// الأسعار JSON
+  pricing        String
+  /// الوقت المتوقع للتسليم بالساعات
+  estimatedHours Int       @default(3)
+  status         String    @default("pending")
+  pages          Int       @default(1)
+  copies         Int       @default(1)
+  total          Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  readyAt        DateTime?
+  deliveredAt    DateTime?
+  /// ارتباط بالمتجر (اختياري للتوافق مع البيانات القديمة)
+  shopId         String?
+  shop           Shop?     @relation(fields: [shopId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([shopId])
+}
+
+/// إعدادات النظام القابلة للتعديل من الإدارة
+model Setting {
+  id        String   @id @default(cuid())
+  /// "services", "delivery", "general"
+  key       String
+  /// JSON
+  value     String
+  updatedAt DateTime @updatedAt
+  /// ارتباط بالمتجر
+  shopId    String?
+  shop      Shop?    @relation("ShopSettings", fields: [shopId], references: [id])
+
+  @@unique([shopId, key])
+}
+
+/// إعدادات المدير الأول - كلمة المرور وأعضاء الفريق
+model SuperAdmin {
+  id    String @id @default(cuid())
+  /// مفتاح فريد - صف واحد فقط
+  key   String @unique @default("main")
+  /// كلمة مرور لوحة التحكم الرئيسية (مشفّرة ببسيط)
+  password String @default("Admin@2025")
+  /// قائمة أعضاء الفريق JSON: [{ email, name, role, addedAt }]
+  teamMembers String @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

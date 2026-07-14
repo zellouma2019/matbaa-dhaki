@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <!-- Amber/gold background with rounded corners -->
+  <rect width="180" height="180" rx="36" fill="#d4af37"/>
+  <!-- Printer body -->
+  <rect x="34" y="62" width="112" height="67" rx="10" fill="#ffffff"/>
+  <!-- Paper tray (top) -->
+  <rect x="57" y="28" width="66" height="46" rx="5" fill="#f5f0e0" stroke="#d4af37" stroke-width="3.5"/>
+  <!-- Paper lines on top tray -->
+  <line x1="67" y1="44" x2="113" y2="44" stroke="#d4af37" stroke-width="3" stroke-linecap="round"/>
+  <line x1="67" y1="54" x2="103" y2="54" stroke="#d4af37" stroke-width="3" stroke-linecap="round"/>
+  <line x1="67" y1="64" x2="108" y2="64" stroke="#d4af37" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <!-- Output paper (bottom) -->
+  <rect x="57" y="107" width="66" height="46" rx="5" fill="#f5f0e0" stroke="#d4af37" stroke-width="3.5"/>
+  <!-- Paper lines on output -->
+  <line x1="67" y1="122" x2="113" y2="122" stroke="#d4af37" stroke-width="3" stroke-linecap="round"/>
+  <line x1="67" y1="132" x2="103" y2="132" stroke="#d4af37" stroke-width="3" stroke-linecap="round"/>
+  <line x1="67" y1="142" x2="108" y2="142" stroke="#d4af37" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <!-- Status light on printer -->
+  <circle cx="131" cy="80" r="5" fill="#d4af37" opacity="0.6"/>
+</svg>
